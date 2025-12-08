@@ -1,10 +1,14 @@
-langchain-core==1.0.3
+pip>=23.1
+setuptools
+wheel
+langchain-core==1.1.0
 langchain-google-genai==3.2.0
 langgraph==1.0.4
-langgraph-sdk==0.1.2
 google-genai==1.0.0
 pandas==2.1.2
 scikit-learn==1.2.2
 plotly==5.15.0
-python-dotenv==1.0.0
 streamlit==1.30.0
+python-dotenv==1.0.0
+protobuf==3.20.3
+requests>=2.31.0
