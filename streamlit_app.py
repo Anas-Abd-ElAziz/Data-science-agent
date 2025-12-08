@@ -128,17 +128,6 @@ with st.sidebar:
         st.session_state.last_tool_results = []
         st.experimental_rerun()
 
-    st.header("💡 Example Questions")
-    st.markdown(
-        """
-    - What are the columns in the data?
-    - Show me the distribution of loan amounts
-    - Create a report of the top 5 insights
-    - What's the correlation between income and loan amount?
-    - Create histograms for all numerical columns
-    """
-    )
-
 #
 # Main area: tabs (messages + logs). Note: chat_input will be placed *below* tabs.
 #
