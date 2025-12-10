@@ -69,7 +69,7 @@ if "last_tool_results" not in st.session_state:
 #
 with st.sidebar:
     st.header("📤 Upload Data")
-    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"], key="sidebar_uploader")
+    uploaded_file = st.file_uploader("Choose a CSV/Excel file", type=["csv", "xlsx"], key="sidebar_uploader")
 
     if uploaded_file is not None:
         try:
@@ -88,11 +88,11 @@ with st.sidebar:
             else:
                 st.success(f"✅ Current file: {uploaded_file.name}")
         except Exception as e:
-            st.error(f"❌ Error loading CSV: {e}")
+            st.error(f"❌ Error loading the file from your computer: {e}")
     elif st.session_state.df is not None:
         st.info(f"📁 Current: {st.session_state.uploaded_filename}")
     else:
-        st.info("⚠️ Please upload a CSV to begin.")
+        st.info("⚠️ Please upload a CSV/Excel file to begin.")
 
     st.divider()
 
@@ -183,7 +183,7 @@ with tab2:
 # IMPORTANT: put chat_input OUTSIDE the tabs (top-level) so Streamlit doesn't raise
 #
 if st.session_state.df is None:
-    st.warning("Upload a CSV in the sidebar to enable the chat input.")
+    st.warning("Upload a CSV/Excel file in the sidebar to enable the chat input.")
 else:
     # top-level chat_input (not inside any container like tab/expander/sidebar)
     prompt = st.chat_input("Ask about the data...")
