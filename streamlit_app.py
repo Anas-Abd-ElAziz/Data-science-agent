@@ -29,6 +29,7 @@ st.markdown(
 
 st.title("🤖 Data Science Agent")
 st.markdown("Ask questions about your data and get insights with visualizations!")
+st.markdown("If the model doesnt respond from the first time, please ask the same question again")
 
 def scroll_to_bottom():
     # embed a timestamp to ensure uniqueness so the snippet runs every rerun
