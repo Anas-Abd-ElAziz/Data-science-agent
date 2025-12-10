@@ -12,3 +12,4 @@ streamlit==1.30.0
 python-dotenv==1.0.0
 protobuf==3.20.3
 requests>=2.31.0
+statsmodels>=0.14.0
