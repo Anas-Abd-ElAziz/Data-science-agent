@@ -168,7 +168,7 @@ I kept getting `NameError: name 'pd' is not defined` even though pandas was impo
 
 ## Contributing
 
-This is a learning project, but if you have suggestions or find bugs, feel free to open an issue!
+If you have suggestions or find bugs, feel free to open an issue!
 
 ## License
 
