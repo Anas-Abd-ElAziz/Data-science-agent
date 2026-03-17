@@ -180,6 +180,3 @@ MIT License - feel free to use this for your own learning!
 - The LangGraph examples that helped me understand state management
 - Streamlit for making deployment so accessible
 
----
-
-**Note**: This is a learning project and not production-ready. Use at your own risk, especially with the code execution features!
