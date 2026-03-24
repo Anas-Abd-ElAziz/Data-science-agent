@@ -268,6 +268,9 @@ with tab2:
                     expanded=True,
                 ):
                     st.caption(f"⏰ {item.get('timestamp', 'N/A')}")
+                    if item.get("code"):
+                        st.markdown("**Code Executed:**")
+                        st.code(item["code"], language="python")
                     if item.get("stdout"):
                         st.markdown("**📊 Output:**")
                         st.code(item["stdout"])

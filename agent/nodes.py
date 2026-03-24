@@ -146,6 +146,7 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
         normalized = {
             "type": "tool_result",
             "tool": name,
+            "code": code,
             "stdout": tool_result.get("stdout", "") or "",
             "result": tool_result.get("result", None),
             "figures": tool_result.get("figures", []) or [],
