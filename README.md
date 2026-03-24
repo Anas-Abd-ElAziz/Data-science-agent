@@ -171,7 +171,7 @@ I kept getting `NameError: name 'pd' is not defined` even though pandas was impo
 
 ## Contributing
 
-This is a learning project, but if you have suggestions or find bugs, feel free to open an issue!
+If you have suggestions or find bugs, feel free to open an issue!
 
 ## License
 
@@ -183,6 +183,9 @@ MIT License - feel free to use this for your own learning!
 - The LangGraph examples that helped me understand state management
 - Streamlit for making deployment so accessible
 
+<<<<<<< HEAD
 ---
 
 **Note**: This is a learning project and not production-ready. Use at your own risk, especially with the code execution features!
+=======
+>>>>>>> 8b516c1d1fbb96ace50ad7a766a5e6e12486cb32
