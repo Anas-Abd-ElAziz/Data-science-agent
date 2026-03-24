@@ -156,6 +156,11 @@ I kept getting `NameError: name 'pd' is not defined` even though pandas was impo
 
 **Solution**: Had to explicitly pass all needed libraries (pd, px, go, sklearn) into the `env_vars` dict. Now the agent can use any of these libraries in its generated code.
 
+### 5. **Final Response Not Appearing Reliably**
+Sometimes the model clearly finished the analysis, but the Streamlit app still showed "The agent didn't generate a response." The real issue was that the final AI message was not always being routed and stored cleanly inside the graph state.
+
+**Solution**: I fixed the LangGraph flow so final AI responses are detected more reliably, normalized before reading, and returned as explicit `tool_results` state updates instead of depending on in-place mutation.
+
 ## Next Steps
 
 - **Support for multiple DataFrames** - right now it only works with one
