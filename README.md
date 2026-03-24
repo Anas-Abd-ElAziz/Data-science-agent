@@ -17,7 +17,7 @@ This project is a conversational AI agent built with LangChain and LangGraph tha
 
 - **Natural Language Interface**: Ask questions about your data in plain English
 - **Smart Code Execution**: The agent writes and executes Python code to answer your queries
-- **Visualization Support**: Automatically generates and saves Plotly charts
+- **Visualization Support**: Automatically generates interactive Plotly charts and keeps them as in-memory JSON for rendering
 - **Memory Persistence**: Remembers conversation context using LangGraph's checkpointing
 - **Tool Results Tracking**: Stores all tool executions and AI responses for better traceability
 - **Web Interface**: User-friendly Streamlit interface for easy interaction
@@ -160,6 +160,11 @@ I kept getting `NameError: name 'pd' is not defined` even though pandas was impo
 Sometimes the model clearly finished the analysis, but the Streamlit app still showed "The agent didn't generate a response." The real issue was that the final AI message was not always being routed and stored cleanly inside the graph state.
 
 **Solution**: I fixed the LangGraph flow so final AI responses are detected more reliably, normalized before reading, and returned as explicit `tool_results` state updates instead of depending on in-place mutation.
+
+### 6. **Plot Serialization for the UI**
+I originally stored generated figures as pickle files on disk so Streamlit could load them later, but that made the app more filesystem-dependent and less suitable for a future API layer.
+
+**Solution**: I switched the app to serialize Plotly figures as JSON payloads in memory, keep them inside `tool_results`, and reconstruct them directly in Streamlit when rendering the chat.
 
 ## Next Steps
 

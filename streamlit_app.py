@@ -1,10 +1,9 @@
 import streamlit as st
-import pickle
 import os
-import uuid
 import time
 import hashlib
 import pandas as pd
+import plotly.io as pio
 from datetime import datetime
 from agent import graph
 from langchain_core.messages import HumanMessage
@@ -47,6 +46,62 @@ def get_uploaded_file_signature(uploaded_file):
         "size": len(file_bytes),
         "sha256": hashlib.sha256(file_bytes).hexdigest(),
     }
+
+
+def get_figure_identifier(figure_payload):
+    if not isinstance(figure_payload, dict):
+        return ""
+
+    figure_id = figure_payload.get("id")
+    if figure_id:
+        return str(figure_id)
+
+    figure_json = figure_payload.get("figure_json", "")
+    if figure_json:
+        return hashlib.sha256(figure_json.encode("utf-8")).hexdigest()
+
+    return ""
+
+
+def summarize_figures(figure_payloads):
+    summaries = []
+    for index, figure_payload in enumerate(figure_payloads, start=1):
+        title = (
+            figure_payload.get("title", f"Figure {index}")
+            if isinstance(figure_payload, dict)
+            else f"Figure {index}"
+        )
+        summaries.append(
+            {
+                "id": get_figure_identifier(figure_payload) or f"figure_{index}",
+                "title": title,
+            }
+        )
+    return summaries
+
+
+def render_figures(figure_payloads, key_prefix):
+    for index, figure_payload in enumerate(figure_payloads, start=1):
+        figure_json = (
+            figure_payload.get("figure_json")
+            if isinstance(figure_payload, dict)
+            else None
+        )
+        figure_id = get_figure_identifier(figure_payload) or f"figure_{index}"
+
+        if not figure_json:
+            st.warning("⚠️ Could not load visualization: missing figure data")
+            continue
+
+        try:
+            fig = pio.from_json(figure_json)
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                key=f"{key_prefix}_{figure_id}_{index}",
+            )
+        except Exception as e:
+            st.warning(f"⚠️ Could not load visualization: {e}")
 
 
 # Page configuration
@@ -192,18 +247,10 @@ with tab1:
             with st.chat_message("assistant"):
                 st.markdown(msg["content"])
                 if msg.get("figures"):
-                    for fig_path in msg["figures"]:
-                        if os.path.exists(fig_path):
-                            try:
-                                with open(fig_path, "rb") as f:
-                                    fig = pickle.load(f)
-                                    st.plotly_chart(
-                                        fig,
-                                        use_container_width=True,
-                                        key=str(uuid.uuid4()),
-                                    )
-                            except Exception as e:
-                                st.warning(f"⚠️ Could not load visualization: {e}")
+                    render_figures(
+                        msg["figures"],
+                        key_prefix=f"history_{msg.get('timestamp', 'message')}",
+                    )
 
     # After rendering messages, ensure view is at the bottom
     if st.session_state.messages:
@@ -230,7 +277,7 @@ with tab2:
                         st.success(
                             f"✅ Generated {len(item['figures'])} visualization(s)"
                         )
-                        st.json(item["figures"])
+                        st.json(summarize_figures(item["figures"]))
             elif item.get("type") == "ai_message":
                 with st.expander(f"💬 AI Response #{i + 1}", expanded=True):
                     st.caption(f"⏰ {item.get('timestamp', 'N/A')}")
@@ -277,10 +324,16 @@ else:
 
                 for item in tool_results:
                     if item.get("type") == "tool_result":
-                        for fig_path in item.get("figures", []):
-                            if fig_path not in st.session_state.displayed_figures:
-                                new_figures.append(fig_path)
-                                st.session_state.displayed_figures.add(fig_path)
+                        for index, figure_payload in enumerate(
+                            item.get("figures", []), start=1
+                        ):
+                            figure_id = (
+                                get_figure_identifier(figure_payload)
+                                or f"generated_{index}_{len(new_figures)}"
+                            )
+                            if figure_id not in st.session_state.displayed_figures:
+                                new_figures.append(figure_payload)
+                                st.session_state.displayed_figures.add(figure_id)
                     elif item.get("type") == "ai_message":
                         content = item.get("content", "")
                         if content:
@@ -299,18 +352,10 @@ else:
                     with st.chat_message("assistant"):
                         st.markdown(final_ai_message)
                         if new_figures:
-                            for fig_path in new_figures:
-                                if os.path.exists(fig_path):
-                                    try:
-                                        with open(fig_path, "rb") as f:
-                                            fig = pickle.load(f)
-                                            st.plotly_chart(
-                                                fig, use_container_width=True
-                                            )
-                                    except Exception as e:
-                                        st.warning(
-                                            f"⚠️ Could not load visualization: {e}"
-                                        )
+                            render_figures(
+                                new_figures,
+                                key_prefix=f"current_{msg['timestamp']}",
+                            )
 
                 else:
                     st.warning(

@@ -165,8 +165,9 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
             result_parts.append(f"RESULT:\n{tool_result['result']}")
 
         if tool_result.get("figures"):
-            for fig_path in tool_result["figures"]:
-                result_parts.append(f"FIGURE SAVED: {fig_path}")
+            for figure_payload in tool_result["figures"]:
+                figure_label = figure_payload.get("title") or figure_payload.get("id")
+                result_parts.append(f"FIGURE GENERATED: {figure_label}")
 
         if tool_result.get("error"):
             result_parts.append(f"ERROR:\n{tool_result['error']}")

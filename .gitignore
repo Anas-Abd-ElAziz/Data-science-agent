@@ -5,5 +5,3 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 .ipynb_checkpoints/
-
-images/plotly_figures/pickle/*.pickle

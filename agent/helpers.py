@@ -1,11 +1,9 @@
 """Helper functions for code cleaning, extraction, and execution."""
 
-import os
 import sys
 import json
 import ast
 import traceback
-import pickle
 import uuid
 from io import StringIO
 from typing import Tuple
@@ -110,10 +108,27 @@ def extract_code_and_thoughts(last_message, tc=None) -> Tuple[str, str]:
     return "", ""
 
 
+def serialize_plotly_figure(fig, index: int) -> dict:
+    title = None
+    try:
+        title_obj = getattr(getattr(fig, "layout", None), "title", None)
+        title_text = getattr(title_obj, "text", None)
+        if title_text:
+            title = str(title_text)
+    except Exception:
+        title = None
+
+    return {
+        "id": str(uuid.uuid4()),
+        "title": title or f"Figure {index}",
+        "figure_json": fig.to_json(),
+    }
+
+
 def python_repl(code: str, thoughts: str, df: pd.DataFrame) -> dict:
     """
     Execute Python code and return:
-      { stdout: str, result: any or None, figures: [paths], error: str or None }
+      { stdout: str, result: any or None, figures: [figure payloads], error: str or None }
 
     Args:
         code: Python code to execute
@@ -124,8 +139,7 @@ def python_repl(code: str, thoughts: str, df: pd.DataFrame) -> dict:
         Dictionary with stdout, result, figures, and error
     """
     code = clean_code_string(code)
-    os.makedirs("images/plotly_figures/pickle", exist_ok=True)
-    saved_figures = []
+    serialized_figures = []
     stdout_buf = StringIO()
 
     original_stdout = sys.stdout
@@ -144,11 +158,8 @@ def python_repl(code: str, thoughts: str, df: pd.DataFrame) -> dict:
         }
         exec(code, env_vars, env_vars)
 
-        for fig in env_vars.get("plotly_figures", []):
-            fname = f"images/plotly_figures/pickle/{uuid.uuid4()}.pickle"
-            with open(fname, "wb") as f:
-                pickle.dump(fig, f)
-            saved_figures.append(fname)
+        for index, fig in enumerate(env_vars.get("plotly_figures", []), start=1):
+            serialized_figures.append(serialize_plotly_figure(fig, index))
 
         stdout_val = stdout_buf.getvalue()
         result_val = env_vars.get("result", None)
@@ -156,7 +167,7 @@ def python_repl(code: str, thoughts: str, df: pd.DataFrame) -> dict:
         return {
             "stdout": stdout_val or "",
             "result": result_val,
-            "figures": saved_figures,
+            "figures": serialized_figures,
             "error": None,
         }
     except Exception as e:
@@ -164,7 +175,7 @@ def python_repl(code: str, thoughts: str, df: pd.DataFrame) -> dict:
         return {
             "stdout": stdout_buf.getvalue() or "",
             "result": None,
-            "figures": saved_figures,
+            "figures": serialized_figures,
             "error": tb,
         }
     finally:
