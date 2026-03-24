@@ -3,6 +3,7 @@ import pickle
 import os
 import uuid
 import time
+import hashlib
 import pandas as pd
 from datetime import datetime
 from agent import graph
@@ -11,12 +12,45 @@ from agent.config import set_api_key
 import streamlit.components.v1 as components
 
 
+EXCEL_ENGINES = {
+    ".xls": "xlrd",
+    ".xlsx": "openpyxl",
+    ".xlsm": "openpyxl",
+    ".xlsb": "pyxlsb",
+    ".ods": "odf",
+    ".odf": "odf",
+    ".odt": "odf",
+}
+
+
+def load_tabular_file(uploaded_file):
+    extension = os.path.splitext(uploaded_file.name)[1].lower()
+    uploaded_file.seek(0)
+
+    if extension == ".csv":
+        return pd.read_csv(uploaded_file)
+
+    if extension in EXCEL_ENGINES:
+        return pd.read_excel(uploaded_file, engine=EXCEL_ENGINES[extension])
+
+    supported_types = ["csv", *[ext.lstrip(".") for ext in EXCEL_ENGINES]]
+    raise ValueError(
+        "Unsupported file type. Please upload one of: "
+        + ", ".join(sorted(supported_types))
+    )
+
+
+def get_uploaded_file_signature(uploaded_file):
+    file_bytes = uploaded_file.getvalue()
+    return {
+        "name": uploaded_file.name,
+        "size": len(file_bytes),
+        "sha256": hashlib.sha256(file_bytes).hexdigest(),
+    }
+
+
 # Page configuration
-st.set_page_config(
-    page_title="Data Science Agent",
-    page_icon="🤖",
-    layout="wide"
-)
+st.set_page_config(page_title="Data Science Agent", page_icon="🤖", layout="wide")
 
 st.markdown(
     """
@@ -29,7 +63,10 @@ st.markdown(
 
 st.title("🤖 Data Science Agent")
 st.markdown("Ask questions about your data and get insights with visualizations!")
-st.markdown("If the model doesnt respond from the first time, please ask the same question again")
+st.markdown(
+    "If the model doesnt respond from the first time, please ask the same question again"
+)
+
 
 def scroll_to_bottom():
     # embed a timestamp to ensure uniqueness so the snippet runs every rerun
@@ -51,6 +88,7 @@ def scroll_to_bottom():
     # don't pass `key=` — older Streamlit may not accept it
     components.html(html, height=1)
 
+
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -58,8 +96,8 @@ if "thread_id" not in st.session_state:
     st.session_state.thread_id = f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 if "df" not in st.session_state:
     st.session_state.df = None
-if "uploaded_filename" not in st.session_state:
-    st.session_state.uploaded_filename = None
+if "uploaded_file_signature" not in st.session_state:
+    st.session_state.uploaded_file_signature = None
 if "displayed_figures" not in st.session_state:
     st.session_state.displayed_figures = set()
 if "last_tool_results" not in st.session_state:
@@ -70,18 +108,25 @@ if "last_tool_results" not in st.session_state:
 #
 with st.sidebar:
     st.header("📤 Upload Data")
-    uploaded_file = st.file_uploader("Choose a CSV/Excel file", type=["csv", "xlsx"], key="sidebar_uploader")
+    uploaded_file = st.file_uploader(
+        "Choose a CSV/Excel file",
+        type=["csv", "xls", "xlsx", "xlsm", "xlsb", "ods", "odf", "odt"],
+        key="sidebar_uploader",
+    )
 
     if uploaded_file is not None:
         try:
-            new_df = pd.read_csv(uploaded_file)
+            uploaded_file_signature = get_uploaded_file_signature(uploaded_file)
+            new_df = load_tabular_file(uploaded_file)
 
-            # If different file, replace DF and reset chat state
-            if st.session_state.uploaded_filename != uploaded_file.name:
+            # If the uploaded file content changes, replace the DataFrame and reset chat state
+            if st.session_state.uploaded_file_signature != uploaded_file_signature:
                 st.session_state.df = new_df
-                st.session_state.uploaded_filename = uploaded_file.name
+                st.session_state.uploaded_file_signature = uploaded_file_signature
                 st.session_state.messages = []
-                st.session_state.thread_id = f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                st.session_state.thread_id = (
+                    f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                )
                 st.session_state.displayed_figures = set()
                 st.session_state.last_tool_results = []
                 st.success(f"✅ Loaded: {uploaded_file.name}")
@@ -91,7 +136,7 @@ with st.sidebar:
         except Exception as e:
             st.error(f"❌ Error loading the file from your computer: {e}")
     elif st.session_state.df is not None:
-        st.info(f"📁 Current: {st.session_state.uploaded_filename}")
+        st.info(f"📁 Current: {st.session_state.uploaded_file_signature['name']}")
     else:
         st.info("⚠️ Please upload a CSV/Excel file to begin.")
 
@@ -124,7 +169,9 @@ with st.sidebar:
 
     if st.button("🗑️ Clear Chat"):
         st.session_state.messages = []
-        st.session_state.thread_id = f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        st.session_state.thread_id = (
+            f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
         st.session_state.displayed_figures = set()
         st.session_state.last_tool_results = []
         st.experimental_rerun()
@@ -150,7 +197,11 @@ with tab1:
                             try:
                                 with open(fig_path, "rb") as f:
                                     fig = pickle.load(f)
-                                    st.plotly_chart(fig, use_container_width=True, key=str(uuid.uuid4()))
+                                    st.plotly_chart(
+                                        fig,
+                                        use_container_width=True,
+                                        key=str(uuid.uuid4()),
+                                    )
                             except Exception as e:
                                 st.warning(f"⚠️ Could not load visualization: {e}")
 
@@ -165,7 +216,10 @@ with tab2:
     else:
         for i, item in enumerate(st.session_state.last_tool_results):
             if item.get("type") == "tool_result":
-                with st.expander(f"🔧 Tool Call #{i+1}: {item.get('tool', 'unknown')}", expanded=True):
+                with st.expander(
+                    f"🔧 Tool Call #{i + 1}: {item.get('tool', 'unknown')}",
+                    expanded=True,
+                ):
                     st.caption(f"⏰ {item.get('timestamp', 'N/A')}")
                     if item.get("stdout"):
                         st.markdown("**📊 Output:**")
@@ -173,10 +227,12 @@ with tab2:
                     if item.get("error"):
                         st.error(f"❌ **Error:**\n```\n{item['error']}\n```")
                     if item.get("figures"):
-                        st.success(f"✅ Generated {len(item['figures'])} visualization(s)")
+                        st.success(
+                            f"✅ Generated {len(item['figures'])} visualization(s)"
+                        )
                         st.json(item["figures"])
             elif item.get("type") == "ai_message":
-                with st.expander(f"💬 AI Response #{i+1}", expanded=True):
+                with st.expander(f"💬 AI Response #{i + 1}", expanded=True):
                     st.caption(f"⏰ {item.get('timestamp', 'N/A')}")
                     st.markdown(item.get("content", ""))
 
@@ -248,12 +304,18 @@ else:
                                     try:
                                         with open(fig_path, "rb") as f:
                                             fig = pickle.load(f)
-                                            st.plotly_chart(fig, use_container_width=True)
+                                            st.plotly_chart(
+                                                fig, use_container_width=True
+                                            )
                                     except Exception as e:
-                                        st.warning(f"⚠️ Could not load visualization: {e}")
+                                        st.warning(
+                                            f"⚠️ Could not load visualization: {e}"
+                                        )
 
                 else:
-                    st.warning("⚠️ The agent didn't generate a response. Please try again.")
+                    st.warning(
+                        "⚠️ The agent didn't generate a response. Please try again."
+                    )
 
         # scroll to bottom after the new messages render
         scroll_to_bottom()

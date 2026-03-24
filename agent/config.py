@@ -2,6 +2,7 @@
 import os
 from dataclasses import dataclass, field
 from typing import List, Dict
+
 # LangChain imports
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
@@ -21,29 +22,25 @@ class MessagesStateWithTools(MessagesState):
 system_message = """
 You are an advanced AI assistant equipped with tools, including a Python execution tool called `python_repl`.
 The pandas dataframe is called `df` and is already provided for you to work on.
-(CRITICAL) YOU ARE TALKKING TO A CLIENT SO MAKE IT CLEAR AND EASY TO UNDERSTAND AND IF THERE IS SOMETHING TECHNICAL YOU SHOULD EXPLAIN IT VERY CLEARLY
-(CRITICAL) ALWAYS PRODUCE A FINAL RESPONSE AFTER ALL THE TOOL CALLS ARE EXECUTED AND THE TOOL RESULTS ARE RECEIVED.
+
+You are speaking to a client, so keep explanations clear, direct, and easy to understand.
+Always produce a final user-facing response after all tool calls are executed and their results are received.
 
 ## TOOL CALL RULES (IMPORTANT)
 1. When you need to execute Python code, you MUST call the `python_repl` tool.
-2. The arguments for python_repl must include:
+2. The arguments for `python_repl` must follow this shape:
    {"code": "<python code>", "thoughts": "<brief internal intention>"}
 3. After producing a tool call, you MUST wait for the tool result message before producing any user-facing content.
+4. Pass raw Python code in the `code` field only. Do not wrap the code in markdown fences unless unavoidable.
 
-- Do as many tool call as you need to inspect the dataframe columns and get the analysis.
-BEFORE doing ANY analysis, you MUST first inspect the dataframe columns.
-(important) FIRST TOOL CALL - Inspection only (inspect the dataframe columns to know more about the data)
-- **TO SEE CODE OUTPUT**, use `print()` statements. You won't be able to see outputs of `pd.head()`, `pd.describe()` etc. otherwise.
-SECOND TOOL CALL - Analysis using EXACT column names from the inspection:
-- Do NOT guess or assume column names
-- If the column doesn't exist, tell the user
-- NEVER WRITE: plotly_figures = [], The variable plotly_figures is ALREADY INITIALIZED for you.
--ONLY write: plotly_figures.append(fig)
-
-- (CRITICAL) YOU CAN TAKE THE DECISION TO RUN THE ANALYSIS ON THE DATA WITHOUT ASKING FOR PERMISSION FROM THE USER
-- (CRITICAL) ALWAYS FEEL FREE TO DO EXTRA ANALYSIS WITHOUT ASKING THE USER FOR PERMISSON
-- (CRITICAL) BE MORE CONFIDENT IN YOUR ANALYSIS AND SUGGESTIONS AND DO NOT ASK THE USER TO SPECIFY COLUMN NAMES, USE YOUR EXPERTIESE AS A DATA SCIENTIST TO CHOOSE YOURSELF
--
+- Use as many tool calls as needed to inspect the dataframe and complete the analysis.
+- Before doing any analysis, you MUST first inspect the dataframe columns.
+- The first tool call should inspect the dataframe structure and column names only.
+- To see code output, use `print()` statements. Outputs of `pd.head()`, `pd.describe()`, and similar expressions may not appear unless printed.
+- After inspection, use the exact column names discovered from the dataframe.
+- Do not invent missing columns. If the needed column does not exist, tell the user clearly.
+- If multiple columns could reasonably satisfy the request, choose the most relevant one and explain the choice briefly.
+- You may take initiative and perform useful follow-up analysis without asking for permission, as long as it is supported by the data.
 
 ## GENERAL BEHAVIOR
 - Only do what you can with the data provided
@@ -54,7 +51,9 @@ SECOND TOOL CALL - Analysis using EXACT column names from the inspection:
 
 ## PLOTTING AND LIBRARIES
 - Always use the `plotly` library for plotting
-- Do NOT call fig.show() - instead append to plotly_figures: plotly_figures.append(fig)
+- Do NOT call `fig.show()`
+- NEVER write `plotly_figures = []` because it is already initialized for you
+- When creating a figure, only use `plotly_figures.append(fig)`
 - AVAILABLE LIBRARIES: pandas (as pd), sklearn, plotly (px, go, pio) - all already imported
 - For sklearn, import specific modules as needed, e.g.: from sklearn.model_selection import train_test_split
 """
@@ -75,19 +74,20 @@ python_repl_schema = {
         "properties": {
             "code": {
                 "type": "string",
-                "description": "Python code to execute. Must not call fig.show(); use plotly_figures.append(fig)."
+                "description": "Python code to execute. Must not call fig.show(); use plotly_figures.append(fig).",
             },
             "thoughts": {
                 "type": "string",
-                "description": "Optional: agent's private reasoning or intent (not shown to user)."
+                "description": "Optional: agent's private reasoning or intent (not shown to user).",
             },
         },
-        "required": ["code"]
-    }
+        "required": ["code"],
+    },
 }
 
 
 _llm_with_tools = None
+
 
 def set_api_key(api_key: str, model: str = "gemini-2.5-flash-lite"):
     """
@@ -99,12 +99,10 @@ def set_api_key(api_key: str, model: str = "gemini-2.5-flash-lite"):
         raise ValueError("API key is empty")
 
     # Create a brand-new LLM and bind tools
-    llm = ChatGoogleGenerativeAI(
-        model=model,
-        google_api_key=api_key
-    )
+    llm = ChatGoogleGenerativeAI(model=model, google_api_key=api_key)
     _llm_with_tools = llm.bind_tools([python_repl_schema])
     return _llm_with_tools
+
 
 def get_llm_with_tools():
     """
@@ -115,6 +113,7 @@ def get_llm_with_tools():
             "LLM not initialized. Call config.set_api_key(api_key) first."
         )
     return _llm_with_tools
+
 
 # Optionally initialize from environment variable if available (fallback)
 if os.getenv("GOOGLE_API_KEY"):

@@ -2,7 +2,7 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://data-science-agent.streamlit.app/)
 
-An AI-powered data science agent that can analyze CSV data, generate visualizations, and perform machine learning tasks using natural language.
+An AI-powered data science agent that can analyze CSV and spreadsheet data, generate visualizations, and perform machine learning tasks using natural language.
 
 ## Overview
 
@@ -21,6 +21,7 @@ This project is a conversational AI agent built with LangChain and LangGraph tha
 - **Memory Persistence**: Remembers conversation context using LangGraph's checkpointing
 - **Tool Results Tracking**: Stores all tool executions and AI responses for better traceability
 - **Web Interface**: User-friendly Streamlit interface for easy interaction
+- **Spreadsheet Upload Support**: Accepts CSV, Excel, and OpenDocument spreadsheet files and resets chat context when the uploaded file changes
 
 ## Tech Stack
 
@@ -67,6 +68,8 @@ streamlit run streamlit_app.py
 ```
 
 Then open your browser to the URL shown in the terminal (typically `http://localhost:8501`).
+
+The Streamlit uploader supports `.csv`, `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.ods`, `.odf`, and `.odt` files.
 
 ### Using the Jupyter Notebook
 
