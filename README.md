@@ -187,10 +187,8 @@ MIT License - feel free to use this for your own learning!
 - LangChain documentation and tutorials
 - The LangGraph examples that helped me understand state management
 - Streamlit for making deployment so accessible
-
-<<<<<<< HEAD
 ---
 
 **Note**: This is a learning project and not production-ready. Use at your own risk, especially with the code execution features!
+
 =======
->>>>>>> 8b516c1d1fbb96ace50ad7a766a5e6e12486cb32
