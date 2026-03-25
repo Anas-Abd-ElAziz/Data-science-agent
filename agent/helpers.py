@@ -10,6 +10,7 @@ from typing import Tuple
 
 import pandas as pd
 import sklearn
+import statsmodels.api as sm
 import plotly.graph_objects as go
 import plotly.io as pio
 import plotly.express as px
@@ -154,6 +155,7 @@ def python_repl(code: str, thoughts: str, df: pd.DataFrame) -> dict:
             "go": go,
             "pio": pio,
             "sklearn": sklearn,
+            "sm": sm,
             "plotly_figures": [],
         }
         exec(code, env_vars, env_vars)
