@@ -62,30 +62,43 @@ class AgentSession:
             raise RuntimeError("LLM not initialized for this session")
 
         config = {"configurable": {"thread_id": thread_id}}
+
+        try:
+            current_state = self.graph.get_state(config)
+            existing_tool_results_len = (
+                len(current_state.values.get("tool_results", []))
+                if current_state.values
+                else 0
+            )
+        except Exception:
+            existing_tool_results_len = 0
+
         result = self.graph.invoke(
             {"messages": [HumanMessage(content=query)]},
             config=config,
         )
 
-        return normalize_agent_result(result)
+        return normalize_agent_result(result, existing_tool_results_len)
 
 
-def normalize_agent_result(result: dict) -> dict:
-    tool_results = result.get("tool_results", []) or []
+def normalize_agent_result(result: dict, existing_tool_results_len: int = 0) -> dict:
+    all_tool_results = result.get("tool_results", []) or []
+    new_tool_results = all_tool_results[existing_tool_results_len:]
+
     final_ai_message = ""
 
-    for item in tool_results:
+    for item in new_tool_results:
         if item.get("type") == "ai_message" and item.get("content"):
             final_ai_message = item["content"]
 
     new_figures = []
-    for item in tool_results:
+    for item in new_tool_results:
         if item.get("type") == "tool_result":
             new_figures.extend(item.get("figures", []))
 
     return {
         "answer": final_ai_message,
-        "tool_results": tool_results,
+        "tool_results": new_tool_results,
         "figures": new_figures,
         "timestamp": datetime.now().isoformat(),
         "messages": result.get("messages", []),
