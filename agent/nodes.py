@@ -117,6 +117,17 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
             "tool_results": tool_results,
         }  # Return tool_results here too!
 
+    content = _extract_message_content(last_message)
+    if content:
+        tool_results.append(
+            {
+                "type": "ai_message",
+                "content": content,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "_structured": False,
+            }
+        )
+
     tool_messages = []
     for tc in tool_calls:
         name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)

@@ -149,7 +149,7 @@ def python_repl(code: str, thoughts: str, df: pd.DataFrame) -> dict:
 
         env_vars = {
             "__builtins__": __builtins__,
-            "df": df,
+            "df": df.copy(),
             "pd": pd,
             "px": px,
             "go": go,
