@@ -1,24 +1,15 @@
-# Standard library imports
-import os
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import Dict, List
 
-# LangChain imports
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
-from langchain_core.tools import tool
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import MessagesState, START, END, StateGraph
-from langgraph.prebuilt import ToolNode
+from langgraph.graph import MessagesState
 
 
-# Custom state Class that is going to be used to store the messages and tool results
 @dataclass
 class MessagesStateWithTools(MessagesState):
     tool_results: List[Dict] = field(default_factory=list)
 
 
-# System message for the agent
 system_message = """
 You are an advanced AI assistant equipped with tools, including a Python execution tool called `python_repl`.
 The pandas dataframe is called `df` and is already provided for you to work on.
@@ -66,7 +57,6 @@ Always produce a final user-facing response after all tool calls are executed an
 """
 
 
-# Python REPL tool schema
 python_repl_schema = {
     "name": "python_repl",
     "description": (
@@ -93,39 +83,9 @@ python_repl_schema = {
 }
 
 
-_llm_with_tools = None
-
-
-def set_api_key(api_key: str, model: str = "gemini-2.5-flash-lite"):
-    """
-    Initialize (or re-initialize) the LLM with the provided API key.
-    Call this from your Streamlit app when the user provides a key.
-    """
-    global _llm_with_tools
+def build_llm_with_tools(api_key: str, model: str = "gemini-2.5-flash-lite"):
     if not api_key:
         raise ValueError("API key is empty")
 
-    # Create a brand-new LLM and bind tools
     llm = ChatGoogleGenerativeAI(model=model, google_api_key=api_key)
-    _llm_with_tools = llm.bind_tools([python_repl_schema])
-    return _llm_with_tools
-
-
-def get_llm_with_tools():
-    """
-    Returns the initialized llm_with_tools. If not initialized, raises a clear error.
-    """
-    if _llm_with_tools is None:
-        raise RuntimeError(
-            "LLM not initialized. Call config.set_api_key(api_key) first."
-        )
-    return _llm_with_tools
-
-
-# Optionally initialize from environment variable if available (fallback)
-if os.getenv("GOOGLE_API_KEY"):
-    try:
-        set_api_key(os.getenv("GOOGLE_API_KEY"))
-    except Exception:
-        # ignore any error on import-time initialization; prefer explicit set in Streamlit
-        pass
+    return llm.bind_tools([python_repl_schema])

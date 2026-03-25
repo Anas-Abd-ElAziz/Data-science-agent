@@ -5,9 +5,7 @@ import hashlib
 import pandas as pd
 import plotly.io as pio
 from datetime import datetime
-from agent import graph
-from langchain_core.messages import HumanMessage
-from agent.config import set_api_key
+from agent import AgentSession
 import streamlit.components.v1 as components
 
 
@@ -157,6 +155,10 @@ if "displayed_figures" not in st.session_state:
     st.session_state.displayed_figures = set()
 if "last_tool_results" not in st.session_state:
     st.session_state.last_tool_results = []
+if "agent_session" not in st.session_state:
+    st.session_state.agent_session = AgentSession()
+if st.session_state.df is not None:
+    st.session_state.agent_session.set_dataframe(st.session_state.df)
 
 #
 # Sidebar: upload and API key
@@ -177,6 +179,8 @@ with st.sidebar:
             # If the uploaded file content changes, replace the DataFrame and reset chat state
             if st.session_state.uploaded_file_signature != uploaded_file_signature:
                 st.session_state.df = new_df
+                st.session_state.agent_session.set_dataframe(new_df)
+                st.session_state.agent_session.clear_memory()
                 st.session_state.uploaded_file_signature = uploaded_file_signature
                 st.session_state.messages = []
                 st.session_state.thread_id = (
@@ -187,6 +191,7 @@ with st.sidebar:
                 st.success(f"✅ Loaded: {uploaded_file.name}")
                 # note: don't st.rerun() here; keep flow simple. You may choose to rerun if desired.
             else:
+                st.session_state.agent_session.set_dataframe(new_df)
                 st.success(f"✅ Current file: {uploaded_file.name}")
         except Exception as e:
             st.error(f"❌ Error loading the file from your computer: {e}")
@@ -212,7 +217,7 @@ with st.sidebar:
     if entered_key and entered_key != st.session_state.api_key:
         st.session_state.api_key = entered_key
         try:
-            set_api_key(entered_key)
+            st.session_state.agent_session.set_api_key(entered_key)
             st.success("API key set for this session.")
         except Exception as e:
             st.error(f"Failed to set API key: {e}")
@@ -227,6 +232,7 @@ with st.sidebar:
         st.session_state.thread_id = (
             f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         )
+        st.session_state.agent_session.clear_memory()
         st.session_state.displayed_figures = set()
         st.session_state.last_tool_results = []
         st.experimental_rerun()
@@ -305,12 +311,10 @@ else:
 
         # Call the agent (pass df)
         with st.spinner("🤔 Analyzing..."):
-            config = {"configurable": {"thread_id": st.session_state.thread_id}}
             try:
-                result = graph.invoke(
-                    {"messages": [HumanMessage(content=prompt)]},
-                    config=config,
-                    df=st.session_state.df,  # pass the DataFrame into the agent
+                result = st.session_state.agent_session.run(
+                    query=prompt,
+                    thread_id=st.session_state.thread_id,
                 )
             except Exception as e:
                 # surface invocation errors and stop

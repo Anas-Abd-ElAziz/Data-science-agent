@@ -2,11 +2,12 @@
 
 import uuid
 from datetime import datetime, timezone
+from typing import Callable
 
 from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.graph import END
 
-from .config import MessagesStateWithTools, system_message, get_llm_with_tools
+from .config import MessagesStateWithTools, system_message
 from .helpers import extract_code_and_thoughts, python_repl
 
 
@@ -41,21 +42,18 @@ def _extract_message_content(message) -> str:
     return ""
 
 
-def call_agent(state: MessagesStateWithTools) -> dict:
-    """
-    Call the LLM with tools. Ensures the system message is present.
-    Uses config.get_llm_with_tools() to obtain the LLM at runtime.
-    """
-    messages = state["messages"]
-    has_system = any(isinstance(m, SystemMessage) for m in messages)
+def create_agent_node(llm_with_tools) -> Callable[[MessagesStateWithTools], dict]:
+    def call_agent(state: MessagesStateWithTools) -> dict:
+        messages = state["messages"]
+        has_system = any(isinstance(m, SystemMessage) for m in messages)
 
-    if not has_system:
-        messages = [SystemMessage(content=system_message)] + messages
+        if not has_system:
+            messages = [SystemMessage(content=system_message)] + messages
 
-    # Retrieve LLM (this will raise a helpful error if not set)
-    llm_with_tools = get_llm_with_tools()
-    response = llm_with_tools.invoke(messages)
-    return {"messages": [response]}
+        response = llm_with_tools.invoke(messages)
+        return {"messages": [response]}
+
+    return call_agent
 
 
 def should_continue(state: MessagesStateWithTools) -> str:
@@ -184,6 +182,18 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
 
         tool_messages.append(tool_msg)
     return {"messages": tool_messages, "tool_results": tool_results}
+
+
+def create_tools_node(
+    df_getter: Callable[[], object],
+) -> Callable[[MessagesStateWithTools], dict]:
+    def tools_node_wrapper(state: MessagesStateWithTools) -> dict:
+        df = df_getter()
+        if df is None:
+            raise ValueError("DataFrame not provided for tool execution")
+        return tools_node(state, df)
+
+    return tools_node_wrapper
 
 
 def store_response(state: MessagesStateWithTools) -> dict:

@@ -1,30 +1,31 @@
 """Graph construction and query execution for the data science agent."""
 
-import pandas as pd
+from typing import Callable
 
-from langchain_core.messages import HumanMessage, AIMessage
+import pandas as pd
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import START, END, StateGraph
+from langgraph.graph import END, START, StateGraph
 
 from .config import MessagesStateWithTools
-from .nodes import call_agent, should_continue, tools_node, store_response
+from .nodes import create_agent_node, create_tools_node, should_continue, store_response
 
 
 class DataScienceGraph:
-    """Graph wrapper that handles dynamic DataFrame injection."""
+    """Graph wrapper with injected runtime dependencies."""
 
-    def __init__(self):
-        """Initialize the graph structure."""
-        self.memory = MemorySaver()
-        self.current_df = None  # Store the current DataFrame
-        self._build_graph()
+    def __init__(
+        self, llm_with_tools, df_getter: Callable[[], pd.DataFrame], memory=None
+    ):
+        self.memory = memory or MemorySaver()
+        self.llm_with_tools = llm_with_tools
+        self.df_getter = df_getter
+        self.compiled_graph = self._build_graph()
 
     def _build_graph(self):
-        """Build the graph structure."""
         workflow = StateGraph(MessagesStateWithTools)
-
-        workflow.add_node("agent", call_agent)
-        workflow.add_node("tools", self._tools_node_wrapper)
+        workflow.add_node("agent", create_agent_node(self.llm_with_tools))
+        workflow.add_node("tools", create_tools_node(self.df_getter))
         workflow.add_node("store_response", store_response)
 
         workflow.add_edge(START, "agent")
@@ -34,58 +35,29 @@ class DataScienceGraph:
         workflow.add_edge("tools", "agent")
         workflow.add_edge("store_response", END)
 
-        self.compiled_graph = workflow.compile(checkpointer=self.memory)
+        return workflow.compile(checkpointer=self.memory)
 
-    def _tools_node_wrapper(self, state: MessagesStateWithTools) -> dict:
-        """Wrapper that retrieves df from the instance."""
-        if self.current_df is None:
-            raise ValueError(
-                "DataFrame not provided. Use invoke(state, df=your_dataframe)"
-            )
-        return tools_node(state, self.current_df)
-
-    def invoke(self, state: dict, config: dict = None, df: pd.DataFrame = None):
-        """
-        Invoke the graph with a DataFrame.
-
-        Args:
-            state: Initial state with messages
-            config: Configuration dict (e.g., thread_id)
-            df: The pandas DataFrame to use for analysis
-
-        Returns:
-            Final state after graph execution
-        """
-        if df is None:
-            raise ValueError("DataFrame must be provided via df parameter")
-
-        # Store the DataFrame in the instance for tools_node to access
-        self.current_df = df
-
+    def invoke(self, state: dict, config: dict = None):
         return self.compiled_graph.invoke(state, config=config)
 
 
-# Create a global instance
-graph = DataScienceGraph()
+def build_graph(llm_with_tools, df_getter: Callable[[], pd.DataFrame], memory=None):
+    return DataScienceGraph(
+        llm_with_tools=llm_with_tools,
+        df_getter=df_getter,
+        memory=memory,
+    )
 
 
 def run_query(
     query: str,
     df: pd.DataFrame,
+    llm_with_tools,
     thread_id: str = "default",
     debug: bool = False,
     show_all_responses: bool = True,
 ):
-    """
-    Run a query and display results.
-
-    Args:
-        query: The user's query string
-        df: The pandas DataFrame to analyze
-        thread_id: Thread ID for conversation memory (default: "default")
-        debug: If True, print debug information (default: False)
-        show_all_responses: If True, show all AI responses with content (default: True)
-    """
+    graph = build_graph(llm_with_tools=llm_with_tools, df_getter=lambda: df)
     config = {"configurable": {"thread_id": thread_id}}
 
     print(f"\n{'=' * 60}")
@@ -97,7 +69,6 @@ def run_query(
             "messages": [HumanMessage(content=query)],
         },
         config=config,
-        df=df,
     )
 
     if debug:
@@ -105,7 +76,6 @@ def run_query(
             f"\n[DEBUG] Messages: {len(result['messages'])}, Tool results: {len(result.get('tool_results', []))}"
         )
 
-    # Collect all AIMessages with content
     ai_responses = []
     for msg in result["messages"]:
         if isinstance(msg, AIMessage) and msg.content:
@@ -119,7 +89,6 @@ def run_query(
             print("[DEBUG] No AIMessage with content found!")
         return
 
-    # Print all responses or just the final one
     if show_all_responses and len(ai_responses) > 1:
         for i, response in enumerate(ai_responses[:-1], 1):
             print(f"\n--- Agent Update {i} ---")

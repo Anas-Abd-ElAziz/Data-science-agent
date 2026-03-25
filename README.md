@@ -141,6 +141,10 @@ At first, I was using `globals().get("df")` everywhere to access the dataframe. 
 
 **Solution**: I learned to use LangGraph's state management properly by adding the dataframe to my custom state class and implementing a graph wrapper for dynamic DataFrame injection. This made the code much cleaner and more maintainable!
 
+Later, I ran into a second version of the same problem: the app relied on module-level objects like a global graph instance and a global tool-bound LLM. That worked for a single Streamlit flow, but it would become a problem for a future FastAPI version because multiple sessions could end up sharing runtime state.
+
+**Solution**: I introduced a shared backend session layer with `AgentSession`, moved graph/model creation to dependency-injected builders, and used `agent/__init__.py` to expose the backend pieces cleanly. This keeps Streamlit working while making the core architecture ready for a future API layer.
+
 ### 2. **Tool Result Visibility**
 The agent was executing code, but I couldn't see what was happening between tool calls. The conversation felt like a black box.
 
@@ -178,6 +182,7 @@ I originally stored generated figures as pickle files on disk so Streamlit could
 3. **Prompting** - Changed the system prompt multiple times to get the best results from the agent
 4. **Modularization** - How to structure a project for maintainability and deployment
 5. **Web deployment** - Using Streamlit for quick prototyping and deployment
+6. **Session architecture** - How to separate UI session handling from reusable backend runtime logic
 
 ## Contributing
 
@@ -195,5 +200,4 @@ MIT License - feel free to use this for your own learning!
 ---
 
 **Note**: This is a learning project and not production-ready. Use at your own risk, especially with the code execution features!
-
-=======
+---
