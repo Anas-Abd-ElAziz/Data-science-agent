@@ -40,6 +40,9 @@ class DataScienceGraph:
     def invoke(self, state: dict, config: dict = None):
         return self.compiled_graph.invoke(state, config=config)
 
+    def get_state(self, config: dict):
+        return self.compiled_graph.get_state(config)
+
 
 def build_graph(llm_with_tools, df_getter: Callable[[], pd.DataFrame], memory=None):
     return DataScienceGraph(

@@ -70,7 +70,8 @@ class AgentSession:
                 if current_state.values
                 else 0
             )
-        except Exception:
+        except Exception as e:
+            print(f"Warning: Failed to get state length: {e}")
             existing_tool_results_len = 0
 
         result = self.graph.invoke(
