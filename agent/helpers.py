@@ -122,7 +122,7 @@ def serialize_plotly_figure(fig, index: int) -> dict:
     return {
         "id": str(uuid.uuid4()),
         "title": title or f"Figure {index}",
-        "figure_json": fig.to_json(),
+        "figure_spec": json.loads(fig.to_json()),
     }
 
 

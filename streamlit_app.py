@@ -2,7 +2,9 @@ import streamlit as st
 import os
 import time
 import hashlib
+import json
 import pandas as pd
+import plotly.graph_objects as go
 import plotly.io as pio
 from datetime import datetime
 from agent import AgentSession
@@ -54,6 +56,12 @@ def get_figure_identifier(figure_payload):
     if figure_id:
         return str(figure_id)
 
+    figure_spec = figure_payload.get("figure_spec")
+    if figure_spec:
+        return hashlib.sha256(
+            json.dumps(figure_spec, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
     figure_json = figure_payload.get("figure_json", "")
     if figure_json:
         return hashlib.sha256(figure_json.encode("utf-8")).hexdigest()
@@ -80,6 +88,11 @@ def summarize_figures(figure_payloads):
 
 def render_figures(figure_payloads, key_prefix):
     for index, figure_payload in enumerate(figure_payloads, start=1):
+        figure_spec = (
+            figure_payload.get("figure_spec")
+            if isinstance(figure_payload, dict)
+            else None
+        )
         figure_json = (
             figure_payload.get("figure_json")
             if isinstance(figure_payload, dict)
@@ -87,12 +100,15 @@ def render_figures(figure_payloads, key_prefix):
         )
         figure_id = get_figure_identifier(figure_payload) or f"figure_{index}"
 
-        if not figure_json:
+        if not figure_json and not figure_spec:
             st.warning("⚠️ Could not load visualization: missing figure data")
             continue
 
         try:
-            fig = pio.from_json(figure_json)
+            if figure_spec:
+                fig = go.Figure(figure_spec)
+            else:
+                fig = pio.from_json(figure_json)
             st.plotly_chart(
                 fig,
                 use_container_width=True,
