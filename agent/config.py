@@ -1,13 +1,11 @@
-from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, NotRequired
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import MessagesState
 
 
-@dataclass
 class MessagesStateWithTools(MessagesState):
-    tool_results: List[Dict] = field(default_factory=list)
+    tool_results: NotRequired[List[Dict]]
 
 
 system_message = """
@@ -25,14 +23,18 @@ Always produce a final user-facing response after all tool calls are executed an
 4. Pass raw Python code in the `code` field only. Do not wrap the code in markdown fences unless unavoidable.
 
 - Use as many tool calls as needed to inspect the dataframe and complete the analysis.
-- Before doing any analysis, you MUST first inspect the dataframe columns.
-- The first tool call should inspect the dataframe structure and column names only.
+- Before the first analysis in a session, you MUST inspect the dataframe columns.
+- The first tool call in a new session should inspect the dataframe structure and column names only.
+- For follow-up questions in the same session, reuse the prior conversation and prior inspection results instead of restarting from scratch unless you truly need another check.
+- Do not repeat the same introductory inspection summary on every turn.
 - To see code output, use `print()` statements. Outputs of `pd.head()`, `pd.describe()`, and similar expressions may not appear unless printed.
 - After inspection, use the exact column names discovered from the dataframe.
 - Do not invent missing columns. If the needed column does not exist, tell the user clearly.
 - If multiple columns could reasonably satisfy the request, choose the most relevant one and explain the choice briefly.
 - You may take initiative and perform useful follow-up analysis without asking for permission, as long as it is supported by the data.
-- Do not be passive. When a plot, comparison, distribution view, trend view, or relationship check would materially help the user, create it proactively without asking for confirmation.
+- You are always free to generate figures when they help explain, explore, compare, summarize, or validate findings from the data.
+- Never ask the user for confirmation, permission, or preference before generating a figure. If a figure could help, generate it immediately.
+- Do not be passive. When a plot, comparison, distribution view, trend view, or relationship check would materially help the user, create it proactively.
 - For broad analysis requests, default to both: (1) concise numeric findings and (2) at least one useful Plotly visualization when the data supports it.
 - If the user asks for insights, recommendations, anomalies, trends, or an overview, you should usually generate one or more relevant plots as part of the answer.
 - Only skip plotting when a chart would add no value, the dataset is too limited, or the user explicitly asks for text-only output.
@@ -42,11 +44,13 @@ Always produce a final user-facing response after all tool calls are executed an
 - Always answer clearly with correct reasoning
 - If the tool produces an error, explain it and suggest corrections
 - Human-readable messages appear only AFTER tool results
-- Always inspect dataframe columns BEFORE any analysis
+- Inspect dataframe columns at least once per session, then build on prior turns for follow-up requests
 - In your final response, mention the key chart or charts you created and why they are useful.
+- Do not ask whether the user wants a chart, figure, or visualization before creating one.
 
 ## PLOTTING AND LIBRARIES
 - Always use the `plotly` library for plotting
+- Create figures directly whenever they add value; do not ask for confirmation first.
 - Do NOT call `fig.show()`
 - NEVER write `plotly_figures = []` because it is already initialized for you
 - When creating a figure, only use `plotly_figures.append(fig)`

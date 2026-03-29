@@ -30,7 +30,7 @@ class DataScienceGraph:
 
         workflow.add_edge(START, "agent")
         workflow.add_conditional_edges(
-            "agent", should_continue, ["tools", "store_response", END]
+            "agent", should_continue, ["tools", "store_response"]
         )
         workflow.add_edge("tools", "agent")
         workflow.add_edge("store_response", END)
@@ -44,14 +44,6 @@ class DataScienceGraph:
         return self.compiled_graph.get_state(config)
 
 
-def build_graph(llm_with_tools, df_getter: Callable[[], pd.DataFrame], memory=None):
-    return DataScienceGraph(
-        llm_with_tools=llm_with_tools,
-        df_getter=df_getter,
-        memory=memory,
-    )
-
-
 def run_query(
     query: str,
     df: pd.DataFrame,
@@ -60,7 +52,7 @@ def run_query(
     debug: bool = False,
     show_all_responses: bool = True,
 ):
-    graph = build_graph(llm_with_tools=llm_with_tools, df_getter=lambda: df)
+    graph = DataScienceGraph(llm_with_tools=llm_with_tools, df_getter=lambda: df)
     config = {"configurable": {"thread_id": thread_id}}
 
     print(f"\n{'=' * 60}")

@@ -1,19 +1,39 @@
 """Helper functions for code cleaning, extraction, and execution."""
 
-import sys
 import json
 import ast
 import traceback
 import uuid
+from contextlib import redirect_stdout
 from io import StringIO
 from typing import Tuple
 
 import pandas as pd
-import sklearn
-import statsmodels.api as sm
 import plotly.graph_objects as go
 import plotly.io as pio
 import plotly.express as px
+
+
+def _normalize_message_content(content) -> str:
+    """Extract plain text from LangChain message content (str, list of blocks, or None)."""
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str) and block.strip():
+                parts.append(block.strip())
+            elif isinstance(block, dict):
+                text = block.get("text")
+                if text:
+                    parts.append(str(text).strip())
+        return "\n".join(part for part in parts if part)
+
+    if content is None:
+        return ""
+
+    return str(content).strip()
 
 
 def clean_code_string(code: str) -> str:
@@ -48,11 +68,6 @@ def clean_code_string(code: str) -> str:
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         cleaned = "\n".join(lines).strip()
-
-    if "\\n" in cleaned and "\n" not in cleaned:
-        cleaned = cleaned.replace("\\r\\n", "\n")
-        cleaned = cleaned.replace("\\n", "\n")
-        cleaned = cleaned.replace("\\t", "\t")
 
     return cleaned
 
@@ -112,8 +127,7 @@ def extract_code_and_thoughts(last_message, tc=None) -> Tuple[str, str]:
 def serialize_plotly_figure(fig, index: int) -> dict:
     title = None
     try:
-        title_obj = getattr(getattr(fig, "layout", None), "title", None)
-        title_text = getattr(title_obj, "text", None)
+        title_text = fig.layout.title.text
         if title_text:
             title = str(title_text)
     except Exception:
@@ -130,55 +144,47 @@ def python_repl(code: str, thoughts: str, df: pd.DataFrame) -> dict:
     """
     Execute Python code and return:
       { stdout: str, result: any or None, figures: [figure payloads], error: str or None }
-
-    Args:
-        code: Python code to execute
-        thoughts: Agent's reasoning (not used in execution)
-        df: The pandas DataFrame to make available in execution environment
-
-    Returns:
-        Dictionary with stdout, result, figures, and error
     """
+    # Lazy imports — only pay the load cost when code is actually executed.
+    # Python caches these after the first call so there's no repeat overhead.
+    import sklearn
+    import statsmodels.api as sm
+
     code = clean_code_string(code)
     serialized_figures = []
     stdout_buf = StringIO()
 
-    original_stdout = sys.stdout
-    try:
-        sys.stdout = stdout_buf
+    env_vars = {
+        "__builtins__": __builtins__,
+        "df": df.copy(),
+        "pd": pd,
+        "px": px,
+        "go": go,
+        "pio": pio,
+        "sklearn": sklearn,
+        "sm": sm,
+        "plotly_figures": [],
+    }
 
-        env_vars = {
-            "__builtins__": __builtins__,
-            "df": df.copy(),
-            "pd": pd,
-            "px": px,
-            "go": go,
-            "pio": pio,
-            "sklearn": sklearn,
-            "sm": sm,
-            "plotly_figures": [],
-        }
-        exec(code, env_vars, env_vars)
+    try:
+        # redirect_stdout is context-local — safe under concurrent FastAPI requests
+        # unlike a global sys.stdout swap which would race across threads.
+        with redirect_stdout(stdout_buf):
+            exec(code, env_vars, env_vars)
 
         for index, fig in enumerate(env_vars.get("plotly_figures", []), start=1):
             serialized_figures.append(serialize_plotly_figure(fig, index))
 
-        stdout_val = stdout_buf.getvalue()
-        result_val = env_vars.get("result", None)
-
         return {
-            "stdout": stdout_val or "",
-            "result": result_val,
+            "stdout": stdout_buf.getvalue() or "",
+            "result": env_vars.get("result", None),
             "figures": serialized_figures,
             "error": None,
         }
-    except Exception as e:
-        tb = traceback.format_exc()
+    except Exception:
         return {
             "stdout": stdout_buf.getvalue() or "",
             "result": None,
             "figures": serialized_figures,
-            "error": tb,
+            "error": traceback.format_exc(),
         }
-    finally:
-        sys.stdout = original_stdout

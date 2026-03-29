@@ -6,11 +6,13 @@ import hashlib
 import os
 
 import pandas as pd
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.errors import GraphRecursionError
 
 from .config import build_llm_with_tools
-from .graph import build_graph
+from .graph import DataScienceGraph
+from .helpers import _normalize_message_content
 
 
 EXCEL_ENGINES = {
@@ -69,6 +71,36 @@ def get_uploaded_file_signature(file_bytes: bytes, filename: str) -> dict:
     }
 
 
+def extract_final_answer(
+    result: dict, new_tool_results: list[dict], new_messages=None
+) -> str:
+    # Tier 1 — preferred: the ai_message stored by store_response is always
+    # the correct final answer for this turn and is never stale.
+    for item in reversed(new_tool_results):
+        if item.get("type") == "ai_message" and item.get("content"):
+            return str(item["content"]).strip()
+
+    # Tier 2 — scan messages for a clean terminal AIMessage (no tool_calls).
+    for message in reversed(new_messages or []):
+        if isinstance(message, AIMessage):
+            if getattr(message, "tool_calls", None):
+                continue
+            content = _normalize_message_content(message.content)
+            if content:
+                return content
+
+    # Tier 3 — last resort: Gemini sometimes emits a blank closing message after
+    # real tool-call responses. Grab the last AIMessage with any non-empty content,
+    # including intermediate ones that also carried tool_calls.
+    for message in reversed(new_messages or []):
+        if isinstance(message, AIMessage):
+            content = _normalize_message_content(message.content)
+            if content:
+                return content
+
+    return ""
+
+
 class AgentSession:
     """Per-session runtime container with no module-level mutable state."""
 
@@ -91,17 +123,14 @@ class AgentSession:
         if api_key:
             self.set_api_key(api_key, model=model)
 
-    def _get_df(self):
-        return self.df
-
     def _rebuild_graph(self):
         if self.llm_with_tools is None:
             self.graph = None
             return
 
-        self.graph = build_graph(
+        self.graph = DataScienceGraph(
             llm_with_tools=self.llm_with_tools,
-            df_getter=self._get_df,
+            df_getter=lambda: self.df,
             memory=self.memory,
         )
 
@@ -112,7 +141,6 @@ class AgentSession:
 
         self.llm_with_tools = build_llm_with_tools(api_key=api_key, model=self.model)
         self._rebuild_graph()
-        return self.llm_with_tools
 
     def set_dataframe(self, df):
         self.df = df
@@ -129,7 +157,6 @@ class AgentSession:
             self.clear_memory()
 
         return {
-            "dataframe": df,
             "file_signature": file_signature,
             "file_changed": file_changed,
         }
@@ -157,7 +184,7 @@ class AgentSession:
 
         return new_figures
 
-    def run(self, query: str, thread_id: str | None = None):
+    def run(self, query: str, thread_id: str | None = None, recursion_limit: int = 50):
         if self.df is None:
             raise ValueError("DataFrame not set for this session")
         if self.graph is None:
@@ -166,37 +193,47 @@ class AgentSession:
         if thread_id:
             self.thread_id = thread_id
 
-        config = {"configurable": {"thread_id": self.thread_id}}
+        config = {
+            "configurable": {"thread_id": self.thread_id},
+            "recursion_limit": recursion_limit,
+        }
         self.messages.append({"role": "user", "content": query})
 
-        ## Fixes the issue of streamlit displaying old charts in new Messages
+        hit_recursion_limit = False
         try:
-            current_state = self.graph.get_state(config)
-            existing_tool_results_len = (
-                len(current_state.values.get("tool_results", []))
-                if current_state.values
-                else 0
+            result = self.graph.invoke(
+                {"messages": [HumanMessage(content=query)]},
+                config=config,
             )
-        except Exception as e:
-            print(f"Warning: Failed to get state length: {e}")
-            existing_tool_results_len = 0
+        except GraphRecursionError:
+            hit_recursion_limit = True
+            # Salvage whatever partial state was checkpointed before the cutoff.
+            try:
+                partial_state = self.graph.get_state(config)
+                result = partial_state.values if partial_state.values else {}
+            except Exception:
+                result = {}
 
-        result = self.graph.invoke(
-            {"messages": [HumanMessage(content=query)]},
-            config=config,
-        )
-
-        normalized_result = normalize_agent_result(result, existing_tool_results_len)
+        normalized_result = normalize_agent_result(result)
+        normalized_result["hit_recursion_limit"] = hit_recursion_limit
         self.last_tool_results = normalized_result.get("tool_results", [])
 
         new_figures = self._register_new_figures(normalized_result.get("figures", []))
         normalized_result["figures"] = new_figures
 
-        if normalized_result.get("answer"):
+        answer = normalized_result.get("answer")
+        if hit_recursion_limit and not answer:
+            answer = (
+                "⚠️ The agent reached its step limit before completing. "
+                "Try a simpler or more specific question, or ask me to continue."
+            )
+            normalized_result["answer"] = answer
+
+        if answer:
             self.messages.append(
                 {
                     "role": "assistant",
-                    "content": normalized_result["answer"],
+                    "content": answer,
                     "figures": new_figures,
                     "timestamp": normalized_result["timestamp"],
                 }
@@ -209,25 +246,24 @@ class AgentSession:
         return normalized_result
 
 
-def normalize_agent_result(result: dict, existing_tool_results_len: int = 0) -> dict:
-    all_tool_results = result.get("tool_results", []) or []
-    new_tool_results = all_tool_results[existing_tool_results_len:]
+def normalize_agent_result(result: dict) -> dict:
+    # tool_results only contains the current turn (tools_node resets to [] each turn).
+    tool_results = result.get("tool_results", []) or []
 
-    final_ai_message = ""
+    # All messages are available for the fallback answer extraction, but the
+    # primary source is the ai_message entry in tool_results (set by store_response).
+    all_messages = result.get("messages", []) or []
 
-    for item in new_tool_results:
-        if item.get("type") == "ai_message" and item.get("content"):
-            final_ai_message = item["content"]
+    final_ai_message = extract_final_answer(result, tool_results, all_messages)
 
-    new_figures = []
-    for item in new_tool_results:
+    figures = []
+    for item in tool_results:
         if item.get("type") == "tool_result":
-            new_figures.extend(item.get("figures", []))
+            figures.extend(item.get("figures", []))
 
     return {
         "answer": final_ai_message,
-        "tool_results": new_tool_results,
-        "figures": new_figures,
+        "tool_results": tool_results,
+        "figures": figures,
         "timestamp": datetime.now().isoformat(),
-        "messages": result.get("messages", []),
     }

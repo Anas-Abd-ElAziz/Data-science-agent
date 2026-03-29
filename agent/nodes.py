@@ -5,31 +5,9 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from langchain_core.messages import SystemMessage, ToolMessage
-from langgraph.graph import END
 
 from .config import MessagesStateWithTools, system_message
-from .helpers import extract_code_and_thoughts, python_repl
-
-
-def _normalize_message_content(content) -> str:
-    if isinstance(content, str):
-        return content.strip()
-
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, str) and block.strip():
-                parts.append(block.strip())
-            elif isinstance(block, dict):
-                text = block.get("text")
-                if text:
-                    parts.append(str(text).strip())
-        return "\n".join(part for part in parts if part)
-
-    if content is None:
-        return ""
-
-    return str(content).strip()
+from .helpers import _normalize_message_content, extract_code_and_thoughts, python_repl
 
 
 def _extract_message_content(message) -> str:
@@ -62,21 +40,20 @@ def should_continue(state: MessagesStateWithTools) -> str:
 
     Returns:
         "tools" if there are tool calls to execute
-        "store_response" if there were previous tool results and this is the final response
-        END if conversation is complete
+        "store_response" for all other terminal messages (including empty ones)
     """
     messages = state["messages"]
     last_message = messages[-1]
-    last_content = _extract_message_content(last_message)
 
-    # Check if there are tool calls
+    # If the model issued tool calls, execute them.
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
         return "tools"
 
-    if last_content:
-        return "store_response"
-
-    return END
+    # Always store the terminal message — even if content is empty.
+    # Gemini occasionally emits a blank final message after tool execution;
+    # routing through store_response lets extract_final_answer recover the
+    # last meaningful content from tool_results.
+    return "store_response"
 
 
 def tools_node(state: MessagesStateWithTools, df) -> dict:
@@ -95,19 +72,13 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
     messages = state["messages"]
     last_message = messages[-1]
 
-    # Get existing tool_results or start with empty list - DEFINE THIS EARLY!
-    existing_results = (
-        state.get("tool_results") if isinstance(state.get("tool_results"), list) else []
-    )
-    tool_results = existing_results.copy() if existing_results else []
+    # Start fresh every turn — tool_results should only contain the current
+    # turn's results. Cross-turn figure deduplication is handled by
+    # AgentSession._known_figure_ids, not by accumulating state here.
+    tool_results = []
 
-    # Robustly extract tool_calls from a message object or dict
-    tool_calls = []
-    try:
-        tool_calls = getattr(last_message, "tool_calls", None) or []
-    except Exception:
-        tool_calls = []
-
+    # Extract tool_calls from the message (LangChain object or plain dict fallback)
+    tool_calls = getattr(last_message, "tool_calls", None) or []
     if not tool_calls and isinstance(last_message, dict):
         tool_calls = last_message.get("tool_calls", []) or []
 
@@ -115,7 +86,7 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
         return {
             "messages": [],
             "tool_results": tool_results,
-        }  # Return tool_results here too!
+        }
 
     content = _extract_message_content(last_message)
     if content:
@@ -124,7 +95,6 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
                 "type": "ai_message",
                 "content": content,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "_structured": False,
             }
         )
 
@@ -161,7 +131,6 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
             "figures": tool_result.get("figures", []) or [],
             "error": tool_result.get("error", None),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "_structured": False,
         }
         tool_results.append(normalized)
 
@@ -209,13 +178,15 @@ def create_tools_node(
 
 def store_response(state: MessagesStateWithTools) -> dict:
     """
-    Capture the AI's final message after tool execution and store it in tool_results.
-    This allows displaying tool results and AI responses in order.
+    Capture the AI's final message and append it to this turn's tool_results
+    so callers can find it as the last ai_message entry.
     """
     messages = state["messages"]
     last_message = messages[-1]
     content = _extract_message_content(last_message)
 
+    # Carry forward only this turn's tool_results (set by tools_node above).
+    # These never include prior-turn results since tools_node resets to [].
     existing_results = (
         state.get("tool_results") if isinstance(state.get("tool_results"), list) else []
     )
@@ -224,7 +195,6 @@ def store_response(state: MessagesStateWithTools) -> dict:
         "type": "ai_message",
         "content": content,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "_structured": False,
     }
 
     return {"tool_results": [*existing_results, ai_message_result]}

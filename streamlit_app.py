@@ -39,7 +39,7 @@ def render_figures(figure_payloads, key_prefix):
             fig = pio.from_json(figure_json)
             st.plotly_chart(
                 fig,
-                use_container_width=True,
+                width="stretch",
                 key=f"{key_prefix}_{figure_id}_{index}",
             )
         except Exception as e:
@@ -89,6 +89,8 @@ def scroll_to_bottom():
 # Initialize session state
 if "agent_session" not in st.session_state:
     st.session_state.agent_session = AgentSession()
+if "ui_warning" not in st.session_state:
+    st.session_state.ui_warning = None
 
 agent_session = st.session_state.agent_session
 
@@ -154,7 +156,7 @@ with st.sidebar:
 
     if st.button("🗑️ Clear Chat"):
         agent_session.clear_memory()
-        st.experimental_rerun()
+        st.rerun()
 
 #
 # Main area: tabs (messages + logs). Note: chat_input will be placed *below* tabs.
@@ -217,40 +219,24 @@ with tab2:
 if agent_session.df is None:
     st.warning("Upload a CSV/Excel file in the sidebar to enable the chat input.")
 else:
+    if st.session_state.ui_warning:
+        st.warning(st.session_state.ui_warning)
+        st.session_state.ui_warning = None
+
     # top-level chat_input (not inside any container like tab/expander/sidebar)
     prompt = st.chat_input("Ask about the data...")
 
     if prompt:
-        # Display user message right away
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        st.session_state.ui_warning = None
 
-        # Call the agent (pass df)
         with st.spinner("🤔 Analyzing..."):
             try:
-                result = agent_session.run(
-                    query=prompt,
-                )
+                result = agent_session.run(query=prompt)
             except Exception as e:
-                # surface invocation errors and stop
                 st.error(f"Agent invocation failed: {e}")
             else:
-                final_ai_message = result.get("answer")
-                new_figures = result.get("figures", [])
-                if final_ai_message:
-                    # Display assistant message immediately
-                    with st.chat_message("assistant"):
-                        st.markdown(final_ai_message)
-                        if new_figures:
-                            render_figures(
-                                new_figures,
-                                key_prefix=f"current_{result['timestamp']}",
-                            )
-
-                else:
-                    st.warning(
+                if not result.get("answer"):
+                    st.session_state.ui_warning = (
                         "⚠️ The agent didn't generate a response. Please try again."
                     )
-
-        # scroll to bottom after the new messages render
-        scroll_to_bottom()
+                st.rerun()
