@@ -52,6 +52,8 @@ def run_query(
     debug: bool = False,
     show_all_responses: bool = True,
 ):
+    from .service import normalize_agent_result
+
     graph = DataScienceGraph(llm_with_tools=llm_with_tools, df_getter=lambda: df)
     config = {"configurable": {"thread_id": thread_id}}
 
@@ -66,22 +68,19 @@ def run_query(
         config=config,
     )
 
-    if debug:
-        print(
-            f"\n[DEBUG] Messages: {len(result['messages'])}, Tool results: {len(result.get('tool_results', []))}"
-        )
+    normalized = normalize_agent_result(result)
 
-    ai_responses = []
-    for msg in result["messages"]:
-        if isinstance(msg, AIMessage) and msg.content:
-            ai_responses.append(msg.content)
+    if debug:
+        print(f"\n[DEBUG] Messages: {len(result['messages'])}, Tool results: {len(result.get('tool_results', []))}")
+
+    # Extract clean strings from the new JSON-safe messages
+    ai_responses = [
+        msg["content"] for msg in normalized.get("messages", [])
+        if msg.get("role") == "ai" and msg.get("content")
+    ]
 
     if not ai_responses:
-        print(
-            "\nResponse: (No response generated - the agent may have hit a recursion limit or encountered an error)\n"
-        )
-        if debug:
-            print("[DEBUG] No AIMessage with content found!")
+        print("\nResponse: (No response generated - the agent may have hit a recursion limit or encountered an error)\n")
         return
 
     if show_all_responses and len(ai_responses) > 1:

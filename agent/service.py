@@ -24,7 +24,7 @@ EXCEL_ENGINES = {
     ".odt": "odf",
 }
 
-SUPPORTED_UPLOAD_TYPES = tuple(["csv", *[ext.lstrip(".") for ext in EXCEL_ENGINES]])
+SUPPORTED_UPLOAD_TYPES = ("csv", *[ext.lstrip(".") for ext in EXCEL_ENGINES])
 
 
 def build_thread_id(prefix: str = "session") -> str:
@@ -141,15 +141,11 @@ class AgentSession:
         self.llm_with_tools = build_llm_with_tools(api_key=api_key, model=self.model)
         self._rebuild_graph()
 
-    def set_dataframe(self, df):
-        self.df = df
-
     def load_uploaded_file(self, file_bytes: bytes, filename: str):
-        df = load_tabular_bytes(file_bytes, filename)
         file_signature = get_uploaded_file_signature(file_bytes, filename)
         file_changed = file_signature != self.uploaded_file_signature
 
-        self.set_dataframe(df)
+        self.df = load_tabular_bytes(file_bytes, filename)
         self.uploaded_file_signature = file_signature
 
         if file_changed:
