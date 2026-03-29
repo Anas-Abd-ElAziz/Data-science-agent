@@ -2,13 +2,24 @@
 
 from .config import build_llm_with_tools
 from .graph import DataScienceGraph, build_graph, run_query
-from .service import AgentSession, normalize_agent_result
+from .service import (
+    AgentSession,
+    SUPPORTED_UPLOAD_TYPES,
+    get_figure_identifier,
+    get_uploaded_file_signature,
+    load_tabular_bytes,
+    normalize_agent_result,
+)
 
 __all__ = [
     "AgentSession",
+    "SUPPORTED_UPLOAD_TYPES",
     "DataScienceGraph",
     "build_graph",
     "build_llm_with_tools",
+    "get_figure_identifier",
+    "get_uploaded_file_signature",
+    "load_tabular_bytes",
     "normalize_agent_result",
     "run_query",
 ]

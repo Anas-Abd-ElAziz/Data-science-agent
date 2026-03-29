@@ -1,64 +1,8 @@
 import streamlit as st
-import os
 import time
-import hashlib
-import pandas as pd
 import plotly.io as pio
-from datetime import datetime
-from agent import AgentSession
+from agent import AgentSession, SUPPORTED_UPLOAD_TYPES, get_figure_identifier
 import streamlit.components.v1 as components
-
-
-EXCEL_ENGINES = {
-    ".xls": "xlrd",
-    ".xlsx": "openpyxl",
-    ".xlsm": "openpyxl",
-    ".xlsb": "pyxlsb",
-    ".ods": "odf",
-    ".odf": "odf",
-    ".odt": "odf",
-}
-
-
-def load_tabular_file(uploaded_file):
-    extension = os.path.splitext(uploaded_file.name)[1].lower()
-    uploaded_file.seek(0)
-
-    if extension == ".csv":
-        return pd.read_csv(uploaded_file)
-
-    if extension in EXCEL_ENGINES:
-        return pd.read_excel(uploaded_file, engine=EXCEL_ENGINES[extension])
-
-    supported_types = ["csv", *[ext.lstrip(".") for ext in EXCEL_ENGINES]]
-    raise ValueError(
-        "Unsupported file type. Please upload one of: "
-        + ", ".join(sorted(supported_types))
-    )
-
-
-def get_uploaded_file_signature(uploaded_file):
-    file_bytes = uploaded_file.getvalue()
-    return {
-        "name": uploaded_file.name,
-        "size": len(file_bytes),
-        "sha256": hashlib.sha256(file_bytes).hexdigest(),
-    }
-
-
-def get_figure_identifier(figure_payload):
-    if not isinstance(figure_payload, dict):
-        return ""
-
-    figure_id = figure_payload.get("id")
-    if figure_id:
-        return str(figure_id)
-
-    figure_json = figure_payload.get("figure_json", "")
-    if figure_json:
-        return hashlib.sha256(figure_json.encode("utf-8")).hexdigest()
-
-    return ""
 
 
 def summarize_figures(figure_payloads):
@@ -143,22 +87,10 @@ def scroll_to_bottom():
 
 
 # Initialize session state
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-if "df" not in st.session_state:
-    st.session_state.df = None
-if "uploaded_file_signature" not in st.session_state:
-    st.session_state.uploaded_file_signature = None
-if "displayed_figures" not in st.session_state:
-    st.session_state.displayed_figures = set()
-if "last_tool_results" not in st.session_state:
-    st.session_state.last_tool_results = []
 if "agent_session" not in st.session_state:
     st.session_state.agent_session = AgentSession()
-if st.session_state.df is not None:
-    st.session_state.agent_session.set_dataframe(st.session_state.df)
+
+agent_session = st.session_state.agent_session
 
 #
 # Sidebar: upload and API key
@@ -167,36 +99,29 @@ with st.sidebar:
     st.header("📤 Upload Data")
     uploaded_file = st.file_uploader(
         "Choose a CSV/Excel file",
-        type=["csv", "xls", "xlsx", "xlsm", "xlsb", "ods", "odf", "odt"],
+        type=list(SUPPORTED_UPLOAD_TYPES),
         key="sidebar_uploader",
     )
 
     if uploaded_file is not None:
         try:
-            uploaded_file_signature = get_uploaded_file_signature(uploaded_file)
-            new_df = load_tabular_file(uploaded_file)
+            file_bytes = uploaded_file.getvalue()
+            upload_result = agent_session.load_uploaded_file(
+                file_bytes,
+                uploaded_file.name,
+            )
 
-            # If the uploaded file content changes, replace the DataFrame and reset chat state
-            if st.session_state.uploaded_file_signature != uploaded_file_signature:
-                st.session_state.df = new_df
-                st.session_state.agent_session.set_dataframe(new_df)
-                st.session_state.agent_session.clear_memory()
-                st.session_state.uploaded_file_signature = uploaded_file_signature
-                st.session_state.messages = []
-                st.session_state.thread_id = (
-                    f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                )
-                st.session_state.displayed_figures = set()
-                st.session_state.last_tool_results = []
+            if upload_result["file_changed"]:
                 st.success(f"✅ Loaded: {uploaded_file.name}")
-                # note: don't st.rerun() here; keep flow simple. You may choose to rerun if desired.
             else:
-                st.session_state.agent_session.set_dataframe(new_df)
                 st.success(f"✅ Current file: {uploaded_file.name}")
         except Exception as e:
             st.error(f"❌ Error loading the file from your computer: {e}")
-    elif st.session_state.df is not None:
-        st.info(f"📁 Current: {st.session_state.uploaded_file_signature['name']}")
+    elif (
+        agent_session.df is not None
+        and agent_session.uploaded_file_signature is not None
+    ):
+        st.info(f"📁 Current: {agent_session.uploaded_file_signature['name']}")
     else:
         st.info("⚠️ Please upload a CSV/Excel file to begin.")
 
@@ -224,17 +149,11 @@ with st.sidebar:
     st.divider()
 
     st.header("🔧 Session Info")
-    st.text(f"Thread ID: {st.session_state.thread_id}")
-    st.text(f"Messages: {len(st.session_state.messages)}")
+    st.text(f"Thread ID: {agent_session.thread_id}")
+    st.text(f"Messages: {len(agent_session.messages)}")
 
     if st.button("🗑️ Clear Chat"):
-        st.session_state.messages = []
-        st.session_state.thread_id = (
-            f"streamlit_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        )
-        st.session_state.agent_session.clear_memory()
-        st.session_state.displayed_figures = set()
-        st.session_state.last_tool_results = []
+        agent_session.clear_memory()
         st.experimental_rerun()
 
 #
@@ -245,7 +164,7 @@ tab1, tab2 = st.tabs(["💬 Chat", "🔧 Tool Execution Logs"])
 with tab1:
     st.subheader("Chat")
     # Render chat messages
-    for msg in st.session_state.messages:
+    for msg in agent_session.messages:
         if msg["role"] == "user":
             with st.chat_message("user"):
                 st.markdown(msg["content"])
@@ -259,15 +178,15 @@ with tab1:
                     )
 
     # After rendering messages, ensure view is at the bottom
-    if st.session_state.messages:
+    if agent_session.messages:
         scroll_to_bottom()
 
 with tab2:
     st.subheader("🔧 Tool Execution Logs")
-    if not st.session_state.last_tool_results:
+    if not agent_session.last_tool_results:
         st.info("Tool logs will appear here after a query.")
     else:
-        for i, item in enumerate(st.session_state.last_tool_results):
+        for i, item in enumerate(agent_session.last_tool_results):
             if item.get("type") == "tool_result":
                 with st.expander(
                     f"🔧 Tool Call #{i + 1}: {item.get('tool', 'unknown')}",
@@ -295,16 +214,13 @@ with tab2:
 #
 # IMPORTANT: put chat_input OUTSIDE the tabs (top-level) so Streamlit doesn't raise
 #
-if st.session_state.df is None:
+if agent_session.df is None:
     st.warning("Upload a CSV/Excel file in the sidebar to enable the chat input.")
 else:
     # top-level chat_input (not inside any container like tab/expander/sidebar)
     prompt = st.chat_input("Ask about the data...")
 
     if prompt:
-        # Immediately append user message (so UI shows it)
-        st.session_state.messages.append({"role": "user", "content": prompt})
-
         # Display user message right away
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -312,56 +228,23 @@ else:
         # Call the agent (pass df)
         with st.spinner("🤔 Analyzing..."):
             try:
-                result = st.session_state.agent_session.run(
+                result = agent_session.run(
                     query=prompt,
-                    thread_id=st.session_state.thread_id,
                 )
             except Exception as e:
                 # surface invocation errors and stop
                 st.error(f"Agent invocation failed: {e}")
-                # Optionally remove the user's message if invocation failed
-                # st.session_state.messages.pop()
             else:
-                tool_results = result.get("tool_results", [])
-                st.session_state.last_tool_results = tool_results
-
-                # Gather new figures only
-                new_figures = []
-                final_ai_message = None
-
-                for item in tool_results:
-                    if item.get("type") == "tool_result":
-                        for index, figure_payload in enumerate(
-                            item.get("figures", []), start=1
-                        ):
-                            figure_id = (
-                                get_figure_identifier(figure_payload)
-                                or f"generated_{index}_{len(new_figures)}"
-                            )
-                            if figure_id not in st.session_state.displayed_figures:
-                                new_figures.append(figure_payload)
-                                st.session_state.displayed_figures.add(figure_id)
-                    elif item.get("type") == "ai_message":
-                        content = item.get("content", "")
-                        if content:
-                            final_ai_message = content
-
+                final_ai_message = result.get("answer")
+                new_figures = result.get("figures", [])
                 if final_ai_message:
-                    msg = {
-                        "role": "assistant",
-                        "content": final_ai_message,
-                        "figures": new_figures,
-                        "timestamp": datetime.now().isoformat(),
-                    }
-                    st.session_state.messages.append(msg)
-
                     # Display assistant message immediately
                     with st.chat_message("assistant"):
                         st.markdown(final_ai_message)
                         if new_figures:
                             render_figures(
                                 new_figures,
-                                key_prefix=f"current_{msg['timestamp']}",
+                                key_prefix=f"current_{result['timestamp']}",
                             )
 
                 else:
