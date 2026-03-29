@@ -92,11 +92,12 @@ run_query("What's the correlation between income and loan amount?")
 ```
 Data-science-agent/
 ├── agent/
-│   ├── __init__.py
-│   ├── config.py          # Configuration and LLM setup
-│   ├── graph.py           # Graph construction and execution
-│   ├── helpers.py         # Helper functions for code execution
-│   └── nodes.py           # LangGraph node functions
+│   ├── __init__.py        # Public package API
+│   ├── config.py          # Configuration, system prompt, and LLM setup
+│   ├── graph.py           # LangGraph graph construction (DataScienceGraph)
+│   ├── helpers.py         # Code cleaning, extraction, and python_repl execution
+│   ├── nodes.py           # LangGraph node functions
+│   └── service.py         # Shared service layer (AgentSession, serialization)
 ├── streamlit_app.py       # Streamlit web interface
 ├── Finalmodel.ipynb       # Original Jupyter notebook
 ├── requirements.txt       # Python dependencies
@@ -121,9 +122,10 @@ START → Agent → Tools → Agent → Store Response → END
 ### Agent Module (`agent/`)
 
 - **config.py**: Handles API key configuration, system prompts, and LLM initialization
-- **graph.py**: Defines the graph structure and execution logic with DataFrame injection
+- **graph.py**: Defines the `DataScienceGraph` class and execution logic with DataFrame injection
 - **helpers.py**: Contains utility functions for code cleaning, extraction, and execution
 - **nodes.py**: Implements the graph nodes (agent, tools, response storage)
+- **service.py**: The shared backend service layer — `AgentSession`, file loading, result normalization, and figure deduplication. Has no Streamlit dependency, making it reusable for a future API layer.
 
 ### Streamlit Interface
 
@@ -170,8 +172,14 @@ I originally stored generated figures as pickle files on disk so Streamlit could
 
 **Solution**: I switched the app to serialize Plotly figures as JSON payloads in memory, keep them inside `tool_results`, and reconstruct them directly in Streamlit when rendering the chat.
 
+### 7. **Preparing the Backend for FastAPI**
+As the project grew, some code accumulated redundancy: a duplicate escape-sequence cleanup pass, a `getattr` chain that a `try/except` block already covered, a one-liner method wrapper, an unused return value, a pass-through factory function, and a Streamlit-version compatibility shim that had been dead since Streamlit 1.33.
+
+**Solution**: Systematically removed all of it. The agent's response dict also leaked raw LangChain message objects (not JSON-serializable), which were replaced with plain `{"role", "content"}` dicts. The backend (`AgentSession`) now has zero Streamlit dependency and returns a fully serializable result — ready to be served by a FastAPI layer.
+
 ## Next Steps
 
+- **FastAPI layer** — add REST endpoints (`/sessions`, `/sessions/{id}/query`, `/sessions/{id}/upload`) on top of the existing `AgentSession` backend
 - **Support for multiple DataFrames** - right now it only works with one
 - **Support for SQL databases** - not just CSV files
 
