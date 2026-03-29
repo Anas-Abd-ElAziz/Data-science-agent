@@ -8,7 +8,6 @@ import os
 import pandas as pd
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.errors import GraphRecursionError
 
 from .config import build_llm_with_tools
 from .graph import DataScienceGraph
@@ -184,7 +183,7 @@ class AgentSession:
 
         return new_figures
 
-    def run(self, query: str, thread_id: str | None = None, recursion_limit: int = 50):
+    def run(self, query: str, thread_id: str | None = None, recursion_limit: int = 100):
         if self.df is None:
             raise ValueError("DataFrame not set for this session")
         if self.graph is None:
@@ -205,7 +204,11 @@ class AgentSession:
                 {"messages": [HumanMessage(content=query)]},
                 config=config,
             )
-        except GraphRecursionError:
+        except Exception as e:
+            # Catch GraphRecursionError regardless of the exact import path —
+            # LangGraph changed the exception location across versions.
+            if "recursion" not in type(e).__name__.lower() and "recursion limit" not in str(e).lower():
+                raise
             hit_recursion_limit = True
             # Salvage whatever partial state was checkpointed before the cutoff.
             try:
@@ -266,4 +269,12 @@ def normalize_agent_result(result: dict) -> dict:
         "tool_results": tool_results,
         "figures": figures,
         "timestamp": datetime.now().isoformat(),
+        "messages": [
+            {
+                "role": "ai" if isinstance(m, AIMessage) else "human",
+                "content": _normalize_message_content(m.content),
+            }
+            for m in result.get("messages", [])
+            if hasattr(m, "content")
+        ],
     }
