@@ -71,20 +71,14 @@ Then open your browser to the URL shown in the terminal (typically `http://local
 
 The Streamlit uploader supports `.csv`, `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.ods`, `.odf`, and `.odt` files.
 
-### Using the Jupyter Notebook
+### Manual Smoke Test
 
-1. Open the Jupyter notebook:
+There is a deferred manual smoke test for the old ad hoc query flow in `tests/test_run_query_manual.py`.
+
+Run it only when you have dependencies installed, `pytest` available in your environment, and a valid `GOOGLE_API_KEY`:
+
 ```bash
-jupyter notebook Finalmodel.ipynb
-```
-
-2. Run all cells to initialize the agent
-
-3. Use the `run_query()` function to interact:
-```python
-run_query("Show me the top 5 loan amounts")
-run_query("Create a bar chart of loan status distribution")
-run_query("What's the correlation between income and loan amount?")
+pytest tests/test_run_query_manual.py -s
 ```
 
 ## Project Structure
@@ -99,8 +93,10 @@ Data-science-agent/
 │   ├── nodes.py           # LangGraph node functions
 │   └── service.py         # Shared service layer (AgentSession, serialization)
 ├── streamlit_app.py       # Streamlit web interface
-├── Finalmodel.ipynb       # Original Jupyter notebook
+├── tests/
+│   └── test_run_query_manual.py  # Deferred manual smoke test
 ├── requirements.txt       # Python dependencies
+├── .gitignore
 └── README.md
 ```
 
@@ -122,7 +118,7 @@ START → Agent → Tools → Agent → Store Response → END
 ### Agent Module (`agent/`)
 
 - **config.py**: Handles API key configuration, system prompts, and LLM initialization
-- **graph.py**: Defines the `DataScienceGraph` class and execution logic with DataFrame injection
+- **graph.py**: Defines the `DataScienceGraph` class and the LangGraph wiring with DataFrame injection
 - **helpers.py**: Contains utility functions for code cleaning, extraction, and execution
 - **nodes.py**: Implements the graph nodes (agent, tools, response storage)
 - **service.py**: The shared backend service layer — `AgentSession`, file loading, result normalization, and figure deduplication. Has no Streamlit dependency, making it reusable for a future API layer.
@@ -135,6 +131,10 @@ The `streamlit_app.py` provides:
 - Visualization display
 - Tool execution logs
 - Session management
+
+### Tests
+
+- `tests/test_run_query_manual.py`: A manual smoke test for the older one-off query flow. It is not part of the Streamlit app path and is skipped unless `GOOGLE_API_KEY` is set.
 
 ## Challenges I Faced
 

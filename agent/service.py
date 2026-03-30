@@ -70,9 +70,7 @@ def get_uploaded_file_signature(file_bytes: bytes, filename: str) -> dict:
     }
 
 
-def extract_final_answer(
-    result: dict, new_tool_results: list[dict], new_messages=None
-) -> str:
+def extract_final_answer(new_tool_results: list[dict], new_messages=None) -> str:
     # Tier 1 — preferred: the ai_message stored by store_response is always
     # the correct final answer for this turn and is never stale.
     for item in reversed(new_tool_results):
@@ -203,7 +201,10 @@ class AgentSession:
         except Exception as e:
             # Catch GraphRecursionError regardless of the exact import path —
             # LangGraph changed the exception location across versions.
-            if "recursion" not in type(e).__name__.lower() and "recursion limit" not in str(e).lower():
+            if (
+                "recursion" not in type(e).__name__.lower()
+                and "recursion limit" not in str(e).lower()
+            ):
                 raise
             hit_recursion_limit = True
             # Salvage whatever partial state was checkpointed before the cutoff.
@@ -253,7 +254,7 @@ def normalize_agent_result(result: dict) -> dict:
     # primary source is the ai_message entry in tool_results (set by store_response).
     all_messages = result.get("messages", []) or []
 
-    final_ai_message = extract_final_answer(result, tool_results, all_messages)
+    final_ai_message = extract_final_answer(tool_results, all_messages)
 
     figures = []
     for item in tool_results:

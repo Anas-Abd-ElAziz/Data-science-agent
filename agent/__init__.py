@@ -1,7 +1,7 @@
 """Data Science Agent - shared backend components for UI and API layers."""
 
 from .config import build_llm_with_tools
-from .graph import DataScienceGraph, run_query
+from .graph import DataScienceGraph
 from .service import (
     AgentSession,
     SUPPORTED_UPLOAD_TYPES,
@@ -20,5 +20,4 @@ __all__ = [
     "get_uploaded_file_signature",
     "load_tabular_bytes",
     "normalize_agent_result",
-    "run_query",
 ]
