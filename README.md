@@ -71,16 +71,6 @@ Then open your browser to the URL shown in the terminal (typically `http://local
 
 The Streamlit uploader supports `.csv`, `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.ods`, `.odf`, and `.odt` files.
 
-### Manual Smoke Test
-
-There is a deferred manual smoke test for the old ad hoc query flow in `tests/test_run_query_manual.py`.
-
-Run it only when you have dependencies installed, `pytest` available in your environment, and a valid `GOOGLE_API_KEY`:
-
-```bash
-pytest tests/test_run_query_manual.py -s
-```
-
 ## Project Structure
 
 ```
@@ -93,8 +83,6 @@ Data-science-agent/
 │   ├── nodes.py           # LangGraph node functions
 │   └── service.py         # Shared service layer (AgentSession, serialization)
 ├── streamlit_app.py       # Streamlit web interface
-├── tests/
-│   └── test_run_query_manual.py  # Deferred manual smoke test
 ├── requirements.txt       # Python dependencies
 ├── .gitignore
 └── README.md
@@ -131,10 +119,6 @@ The `streamlit_app.py` provides:
 - Visualization display
 - Tool execution logs
 - Session management
-
-### Tests
-
-- `tests/test_run_query_manual.py`: A manual smoke test for the older one-off query flow. It is not part of the Streamlit app path and is skipped unless `GOOGLE_API_KEY` is set.
 
 ## Challenges I Faced
 
