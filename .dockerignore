@@ -1,0 +1,48 @@
+# Version control
+.git
+.gitignore
+
+# Python caching & environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# Project files
+.ruff_cache/
+.pytest_cache/
+uv.lock
+
+# Data files / Logs
+*.csv
+*.xlsx
+*.xls
+*.db
+*.sqlite3
+*.log

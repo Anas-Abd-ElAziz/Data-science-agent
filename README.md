@@ -87,13 +87,26 @@ export GOOGLE_API_KEY=your_api_key_here
 
 ## Usage
 
-### Running the Streamlit App
+### Running Locally via Docker (Recommended)
+
+You can run both the FastAPI backend and Streamlit frontend in isolated containers using Docker Compose.
+
+1. Ensure your `.env` file is set up with your `GOOGLE_API_KEY`.
+2. Run the following command:
+```bash
+docker-compose up --build
+```
+This will start:
+- **FastAPI API** on `http://localhost:8000`
+- **Streamlit UI** on `http://localhost:8501`
+
+### Running the Streamlit App (Without Docker)
 
 ```bash
 uv run streamlit run streamlit_app.py
 ```
 
-### Running the FastAPI Backend
+### Running the FastAPI Backend (Without Docker)
 
 ```bash
 uv run uvicorn api:app --reload --host 0.0.0.0 --port 8000
@@ -102,6 +115,16 @@ uv run uvicorn api:app --reload --host 0.0.0.0 --port 8000
 Then open your browser to the URL shown in the terminal (typically `http://localhost:8501`).
 
 The Streamlit uploader supports `.csv`, `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.ods`, `.odf`, and `.odt` files.
+
+## AWS Deployment Guide
+
+When deploying to AWS (e.g., ECS Fargate, App Runner), you should **never** hardcode API keys or commit your `.env` file. 
+
+1. **Build & Push**: Build the image locally (`docker build -t data-science-agent .`) and push it to AWS ECR.
+2. **Deploy Containers**: Deploy the same image twice (once for the frontend service, once for the backend service).
+   - For the API container, set the command to: `uvicorn api:app --host 0.0.0.0 --port 8000`
+   - For the UI container, set the command to: `streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0`
+3. **Inject Secrets**: Use the AWS Console to inject your `GOOGLE_API_KEY` and `LANGFUSE_*` variables securely into the container environment at runtime.
 
 ## Project Structure
 
