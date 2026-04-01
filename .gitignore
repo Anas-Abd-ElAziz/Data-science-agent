@@ -8,5 +8,5 @@ __pycache__/
 .ipynb_checkpoints/
 
 Finalmodel.ipynb
-loaddata.csv
+loan_data.csv
 .env
