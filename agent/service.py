@@ -9,9 +9,17 @@ import pandas as pd
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from .config import build_llm_with_tools
+from .config import DEFAULT_MODEL, build_llm_with_tools
 from .graph import DataScienceGraph
 from .helpers import _normalize_message_content
+
+try:
+    from langfuse.langchain import CallbackHandler
+
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    LANGFUSE_AVAILABLE = False
+    CallbackHandler = None
 
 
 EXCEL_ENGINES = {
@@ -86,24 +94,13 @@ def extract_final_answer(new_tool_results: list[dict], new_messages=None) -> str
             if content:
                 return content
 
-    # Tier 3 — last resort: Gemini sometimes emits a blank closing message after
-    # real tool-call responses. Grab the last AIMessage with any non-empty content,
-    # including intermediate ones that also carried tool_calls.
-    for message in reversed(new_messages or []):
-        if isinstance(message, AIMessage):
-            content = _normalize_message_content(message.content)
-            if content:
-                return content
-
     return ""
 
 
 class AgentSession:
     """Per-session runtime container with no module-level mutable state."""
 
-    def __init__(
-        self, api_key: str | None = None, model: str = "gemini-2.5-flash-lite"
-    ):
+    def __init__(self, api_key: str | None = None, model: str = DEFAULT_MODEL):
         self.api_key = api_key
         self.model = model
         self.df = None
@@ -115,7 +112,6 @@ class AgentSession:
         self.last_tool_results = []
         self.uploaded_file_signature = None
         self.figures = []
-        self._known_figure_ids = set()
 
         if api_key:
             self.set_api_key(api_key, model=model)
@@ -160,24 +156,21 @@ class AgentSession:
         self.messages = []
         self.last_tool_results = []
         self.figures = []
-        self._known_figure_ids = set()
         self._rebuild_graph()
 
     def _register_new_figures(self, figure_payloads: list[dict]) -> list[dict]:
-        new_figures = []
-
-        for index, figure_payload in enumerate(figure_payloads, start=1):
-            figure_id = get_figure_identifier(figure_payload) or f"figure_{index}"
-            if figure_id in self._known_figure_ids:
-                continue
-
-            self._known_figure_ids.add(figure_id)
-            new_figures.append(figure_payload)
+        for figure_payload in figure_payloads:
             self.figures.append(figure_payload)
 
-        return new_figures
+        return figure_payloads
 
-    def run(self, query: str, thread_id: str | None = None, recursion_limit: int = 100):
+    def run(
+        self,
+        query: str,
+        thread_id: str | None = None,
+        recursion_limit: int = 100,
+        langfuse_handler=None,
+    ):
         if self.df is None:
             raise ValueError("DataFrame not set for this session")
         if self.graph is None:
@@ -186,10 +179,20 @@ class AgentSession:
         if thread_id:
             self.thread_id = thread_id
 
+        callbacks = [langfuse_handler] if langfuse_handler else None
         config = {
             "configurable": {"thread_id": self.thread_id},
             "recursion_limit": recursion_limit,
+            "callbacks": callbacks,
         }
+
+        # Clear tool_results from previous queries in the same session
+        try:
+            self.graph.compiled_graph.update_state(config, {"tool_results": None})
+        except Exception:
+            # First run might not have state
+            pass
+
         self.messages.append({"role": "user", "content": query})
 
         hit_recursion_limit = False
@@ -229,11 +232,18 @@ class AgentSession:
             )
             normalized_result["answer"] = answer
 
-        if answer:
+        # Always store the message if we have an answer OR figures.
+        # Gemini sometimes returns empty text after tool execution, but the
+        # figures are still valid and should be shown to the user.
+        if not answer and new_figures:
+            answer = f"Here are the {len(new_figures)} figure(s) I generated."
+            normalized_result["answer"] = answer
+
+        if answer or new_figures:
             self.messages.append(
                 {
                     "role": "assistant",
-                    "content": answer,
+                    "content": answer or "",
                     "figures": new_figures,
                     "timestamp": normalized_result["timestamp"],
                 }

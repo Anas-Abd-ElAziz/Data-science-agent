@@ -1,6 +1,6 @@
 """Data Science Agent - shared backend components for UI and API layers."""
 
-from .config import build_llm_with_tools
+from .config import DEFAULT_MODEL, build_llm_with_tools
 from .graph import DataScienceGraph
 from .service import (
     AgentSession,
@@ -13,6 +13,7 @@ from .service import (
 
 __all__ = [
     "AgentSession",
+    "DEFAULT_MODEL",
     "SUPPORTED_UPLOAD_TYPES",
     "DataScienceGraph",
     "build_llm_with_tools",

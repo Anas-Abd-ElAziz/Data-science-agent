@@ -72,9 +72,9 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
     messages = state["messages"]
     last_message = messages[-1]
 
-    # Start fresh every turn — tool_results should only contain the current
-    # turn's results. Cross-turn figure deduplication is handled by
-    # AgentSession._known_figure_ids, not by accumulating state here.
+    # Build this node invocation's results. The operator.add reducer on
+    # tool_results will append these to results from prior loops in the
+    # same graph.invoke() call, so all figures survive multi-loop runs.
     tool_results = []
 
     # Extract tool_calls from the message (LangChain object or plain dict fallback)
@@ -180,16 +180,13 @@ def store_response(state: MessagesStateWithTools) -> dict:
     """
     Capture the AI's final message and append it to this turn's tool_results
     so callers can find it as the last ai_message entry.
+
+    With the operator.add reducer on tool_results, this entry is automatically
+    appended to the accumulated list — no need to carry forward manually.
     """
     messages = state["messages"]
     last_message = messages[-1]
     content = _extract_message_content(last_message)
-
-    # Carry forward only this turn's tool_results (set by tools_node above).
-    # These never include prior-turn results since tools_node resets to [].
-    existing_results = (
-        state.get("tool_results") if isinstance(state.get("tool_results"), list) else []
-    )
 
     ai_message_result = {
         "type": "ai_message",
@@ -197,4 +194,4 @@ def store_response(state: MessagesStateWithTools) -> dict:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    return {"tool_results": [*existing_results, ai_message_result]}
+    return {"tool_results": [ai_message_result]}

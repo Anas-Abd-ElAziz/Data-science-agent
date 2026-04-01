@@ -4,6 +4,29 @@ import plotly.io as pio
 from agent import AgentSession, SUPPORTED_UPLOAD_TYPES, get_figure_identifier
 import streamlit.components.v1 as components
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+try:
+    from langfuse.langchain import CallbackHandler
+
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    LANGFUSE_AVAILABLE = False
+    CallbackHandler = None
+
+_langfuse_handler = None
+_langfuse_client = None
+if LANGFUSE_AVAILABLE:
+    try:
+        from langfuse import get_client
+
+        _langfuse_client = get_client()
+        _langfuse_handler = CallbackHandler()
+    except Exception:
+        pass
+
 
 def summarize_figures(figure_payloads):
     summaries = []
@@ -231,11 +254,15 @@ else:
 
         with st.spinner("🤔 Analyzing..."):
             try:
-                result = agent_session.run(query=prompt)
+                result = agent_session.run(
+                    query=prompt, langfuse_handler=_langfuse_handler
+                )
+                if _langfuse_client:
+                    _langfuse_client.flush()
             except Exception as e:
                 st.error(f"Agent invocation failed: {e}")
             else:
-                if not result.get("answer"):
+                if not result.get("answer") and not result.get("figures"):
                     st.session_state.ui_warning = (
                         "⚠️ The agent didn't generate a response. Please try again."
                     )

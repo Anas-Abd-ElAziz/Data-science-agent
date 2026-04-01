@@ -1,11 +1,23 @@
-from typing import Dict, List, NotRequired
+import operator
+from typing import Annotated, Dict, List
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import MessagesState
 
+DEFAULT_MODEL = "gemini-3.1-flash-lite-preview"
+
+
+def add_tool_results(left: list[dict] | None, right: list[dict] | None) -> list[dict]:
+    """Custom reducer for tool_results. If right is None, clears the list."""
+    if right is None:
+        return []
+    if left is None:
+        return right
+    return left + right
+
 
 class MessagesStateWithTools(MessagesState):
-    tool_results: NotRequired[List[Dict]]
+    tool_results: Annotated[list[dict], add_tool_results]
 
 
 system_message = """
@@ -15,17 +27,18 @@ The pandas dataframe is called `df` and is already provided for you to work on.
 You are speaking to a client, so keep explanations clear, direct, and easy to understand.
 Always produce a final user-facing response after all tool calls are executed and their results are received.
 
-## TOOL CALL RULES (IMPORTANT)
+## TOOL CALL RULES (CRITICAL)
 1. When you need to execute Python code, you MUST call the `python_repl` tool.
 2. The arguments for `python_repl` must follow this shape:
    {"code": "<python code>", "thoughts": "<brief internal intention>"}
 3. After producing a tool call, you MUST wait for the tool result message before producing any user-facing content.
 4. Pass raw Python code in the `code` field only. Do not wrap the code in markdown fences unless unavoidable.
+5. NEVER respond with only text when the user asks you to do something with the data. Always call the tool FIRST, then explain results AFTER.
+6. Do NOT say things like "I can help with that! Let me inspect the data first" — just call the tool immediately without preamble.
 
 - Use as many tool calls as needed to inspect the dataframe and complete the analysis.
-- Before the first analysis in a session, you MUST inspect the dataframe columns.
-- The first tool call in a new session should inspect the dataframe structure and column names only.
-- For follow-up questions in the same session, reuse the prior conversation and prior inspection results instead of restarting from scratch unless you truly need another check.
+- On the VERY FIRST message of a session, your FIRST tool call must ONLY inspect the dataframe: `print(df.columns.tolist())`, `print(df.dtypes)`, `print(df.shape)`, `print(df.head())`. Do NOT include any analysis or plotting code in this inspection call.
+- After receiving the inspection results, make a SEPARATE tool call for the actual analysis or figure generation using the real column names you just discovered. Never guess or assume column names.
 - Do not repeat the same introductory inspection summary on every turn.
 - To see code output, use `print()` statements. Outputs of `pd.head()`, `pd.describe()`, and similar expressions may not appear unless printed.
 - After inspection, use the exact column names discovered from the dataframe.
@@ -44,7 +57,6 @@ Always produce a final user-facing response after all tool calls are executed an
 - Always answer clearly with correct reasoning
 - If the tool produces an error, explain it and suggest corrections
 - Human-readable messages appear only AFTER tool results
-- Inspect dataframe columns at least once per session, then build on prior turns for follow-up requests
 - In your final response, mention the key chart or charts you created and why they are useful.
 - Do not ask whether the user wants a chart, figure, or visualization before creating one.
 
@@ -87,7 +99,7 @@ python_repl_schema = {
 }
 
 
-def build_llm_with_tools(api_key: str, model: str = "gemini-2.5-flash-lite"):
+def build_llm_with_tools(api_key: str, model: str = DEFAULT_MODEL):
     if not api_key:
         raise ValueError("API key is empty")
 

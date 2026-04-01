@@ -21,7 +21,28 @@ This project is a conversational AI agent built with LangChain and LangGraph tha
 - **Memory Persistence**: Remembers conversation context using LangGraph's checkpointing
 - **Tool Results Tracking**: Stores all tool executions and AI responses for better traceability
 - **Web Interface**: User-friendly Streamlit interface for easy interaction
+- **REST API**: Production-ready FastAPI backend for integration into other applications
 - **Spreadsheet Upload Support**: Accepts CSV, Excel, and OpenDocument spreadsheet files and resets chat context when the uploaded file changes
+- **Observability & Tracing**: Fully integrated with Langfuse to monitor LLM costs, trace multi-step reasoning, and track latency
+
+## Observability & Tracing (Langfuse)
+
+This application has built-in support for [Langfuse](https://langfuse.com/) to monitor LLM costs, trace multi-step agent reasoning (LangGraph), and track latency.
+
+To enable tracing, add your Langfuse credentials to a `.env` file in the root directory:
+
+```env
+LANGFUSE_PUBLIC_KEY="pk-lf-..."
+LANGFUSE_SECRET_KEY="sk-lf-..."
+LANGFUSE_BASE_URL="http://localhost:3000" # Or https://cloud.langfuse.com
+```
+
+When these variables are present, the FastAPI backend and Streamlit frontend will automatically generate full execution traces for every user query.
+
+## Recent Updates
+* **Multi-Tool Execution:** The agent can now execute multiple Python scripts sequentially in a single turn without dropping intermediate data or figures.
+* **Type Serialization:** Safely serializes complex pandas types (Intervals, Timedeltas, NumPy scalars) preventing JSON API crashes.
+* **FastAPI Backend:** The agent logic is now completely decoupled from Streamlit and served via a production-ready `api.py` layer.
 
 ## Tech Stack
 
@@ -32,6 +53,7 @@ This project is a conversational AI agent built with LangChain and LangGraph tha
 - **Plotly**: Interactive data visualization
 - **Scikit-learn**: Machine learning capabilities
 - **Streamlit**: Web interface for the application
+- **FastAPI**: REST API layer for application integration
 
 ## Live Demo
 
@@ -45,9 +67,12 @@ git clone https://github.com/Anas-Abd-ElAziz/Data-science-agent
 cd Data-science-agent
 ```
 
-2. Install dependencies:
+2. Install dependencies using [uv](https://github.com/astral-sh/uv) (recommended):
 ```bash
-pip install -r requirements.txt
+uv venv
+# On Windows: .venv\Scripts\activate
+# On Linux/Mac: source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
 3. Set up your API key:
@@ -64,7 +89,13 @@ export GOOGLE_API_KEY=your_api_key_here
 ### Running the Streamlit App
 
 ```bash
-streamlit run streamlit_app.py
+uv run streamlit run streamlit_app.py
+```
+
+### Running the FastAPI Backend
+
+```bash
+uv run uvicorn api:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Then open your browser to the URL shown in the terminal (typically `http://localhost:8501`).
@@ -163,7 +194,7 @@ As the project grew, some code accumulated redundancy: a duplicate escape-sequen
 
 ## Next Steps
 
-- **FastAPI layer** — add REST endpoints (`/sessions`, `/sessions/{id}/query`, `/sessions/{id}/upload`) on top of the existing `AgentSession` backend
+- **Dockerization** - Containerize the application for easier deployment
 - **Support for multiple DataFrames** - right now it only works with one
 - **Support for SQL databases** - not just CSV files
 

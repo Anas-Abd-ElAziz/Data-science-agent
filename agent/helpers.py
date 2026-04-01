@@ -124,6 +124,30 @@ def extract_code_and_thoughts(last_message, tc=None) -> Tuple[str, str]:
     return "", ""
 
 
+def _make_json_safe(obj):
+    """Recursively convert non-JSON-serializable objects to safe equivalents."""
+    import datetime as dt
+    import numpy as np
+
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    if isinstance(obj, (pd.Timedelta, dt.timedelta)):
+        return str(obj)
+    if hasattr(obj, "__class__") and "interval" in obj.__class__.__name__.lower():
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_make_json_safe(item) for item in obj]
+    if isinstance(obj, set):
+        return list(obj)
+    return obj
+
+
 def serialize_plotly_figure(fig, index: int) -> dict:
     title = None
     try:
@@ -133,10 +157,17 @@ def serialize_plotly_figure(fig, index: int) -> dict:
     except Exception:
         title = None
 
+    try:
+        fig_dict = fig.to_dict()
+        cleaned_dict = _make_json_safe(fig_dict)
+        figure_json = json.dumps(cleaned_dict)
+    except Exception:
+        figure_json = json.dumps({"error": "Failed to serialize figure"})
+
     return {
         "id": str(uuid.uuid4()),
         "title": title or f"Figure {index}",
-        "figure_json": fig.to_json(),
+        "figure_json": figure_json,
     }
 
 
