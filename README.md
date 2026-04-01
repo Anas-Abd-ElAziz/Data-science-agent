@@ -48,12 +48,13 @@ When these variables are present, the FastAPI backend and Streamlit frontend wil
 
 - **LangChain**: For LLM integration and tool management
 - **LangGraph**: For building the agent workflow with state management
-- **Google Gemini 2.5 Flash Lite**: The underlying language model
+- **Google Gemini 3.1 Flash Lite**: The underlying language model
 - **Pandas**: Data manipulation and analysis
 - **Plotly**: Interactive data visualization
 - **Scikit-learn**: Machine learning capabilities
 - **Streamlit**: Web interface for the application
 - **FastAPI**: REST API layer for application integration
+- **Langfuse**: Observability and execution tracing
 
 ## Live Demo
 
@@ -114,7 +115,11 @@ Data-science-agent/
 │   ├── nodes.py           # LangGraph node functions
 │   └── service.py         # Shared service layer (AgentSession, serialization)
 ├── streamlit_app.py       # Streamlit web interface
-├── requirements.txt       # Python dependencies
+├── api.py                 # FastAPI backend entrypoint
+├── requirements.in        # Top-level dependencies
+├── requirements.txt       # Locked dependencies
+├── .env                   # Environment variables (Langfuse, API keys)
+├── .python-version        # Python version specification for uv
 ├── .gitignore
 └── README.md
 ```
@@ -217,10 +222,8 @@ MIT License - feel free to use this for your own learning!
 
 ## Acknowledgments
 
-- LangChain documentation and tutorials
-- The LangGraph examples that helped me understand state management
-- Streamlit for making deployment so accessible
----
-
-**Note**: This is a learning project and not production-ready. Use at your own risk, especially with the code execution features!
----
+- [LangChain](https://python.langchain.com/) and [LangGraph](https://langchain-ai.github.io/langgraph/) for the excellent agent orchestration framework
+- [Streamlit](https://streamlit.io/) for making web deployments so accessible
+- [FastAPI](https://fastapi.tiangolo.com/) for the robust, production-ready API layer
+- [Langfuse](https://langfuse.com/) for providing fantastic open-source LLM observability
+- [uv](https://github.com/astral-sh/uv) by Astral for incredibly fast Python package management
