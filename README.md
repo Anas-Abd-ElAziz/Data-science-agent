@@ -120,14 +120,17 @@ The Streamlit uploader supports `.csv`, `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.ods
 
 This project is configured to deploy automatically to AWS ECS (Fargate) using GitHub Actions.
 
-1. **GitHub Actions Workflow**: The `.github/workflows/deploy.yml` workflow automatically builds the Docker image, pushes it to AWS ECR, and updates the ECS service upon passing checks.
-2. **Secrets Management**: You must store AWS deployment credentials and the application environment variables (like `GOOGLE_API_KEY` and `LANGFUSE_*`) securely in AWS Parameter Store or Secrets Manager, as well as set GitHub Secrets for CI/CD authentication.
-3. **Containerized API**: The GitHub action manages rolling updates to the single container, executing the FastAPI backend robustly.
+1. **GitHub Actions Workflow**: The `.github/workflows/deploy.yml` workflow builds the Docker image, pushes it to an AWS ECR repository (`data-agent-rep`), and updates the ECS service in the `eu-north-1` region.
+2. **Task Definition**: The ECS task definition is maintained locally within the repository under `.aws/task-definition.json`. It deploys a single container named `api`.
+3. **Secrets Management**: You must store AWS deployment credentials and configuration properties (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `ECS_SERVICE`, and `ECS_CLUSTER`) as GitHub Secrets. Application variables (like `GOOGLE_API_KEY` and `LANGFUSE_*`) should be handled effectively in AWS via parameter store/secrets manager.
+4. **Containerized API**: The GitHub action manages rolling updates to the container, executing the FastAPI backend robustly.
 
 ## Project Structure
 
 ```
 Data-science-agent/
+├── .aws/
+│   └── task-definition.json       # AWS ECS task definition configuration
 ├── .github/
 │   └── workflows/
 │       ├── deploy.yml             # GitHub Actions CI/CD for AWS deployment
