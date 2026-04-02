@@ -1,6 +1,7 @@
 # Data Science Agent with LangChain & LangGraph
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://data-science-agent.streamlit.app/)
+[![API Docs](https://img.shields.io/badge/API-Docs-blue)](http://data-agent-api-alb-919427104.eu-north-1.elb.amazonaws.com/docs#/Configuration)
 
 An AI-powered data science agent that can analyze CSV and spreadsheet data, generate visualizations, and perform machine learning tasks using natural language.
 
@@ -59,7 +60,7 @@ When these variables are present, the FastAPI backend and Streamlit frontend wil
 
 ## Live Demo
 
-Try the live application here: [Data Science Agent on Streamlit](https://data-science-agent.streamlit.app/)
+Try the live application here: [Data Science Agent on Streamlit](https://data-science-agent.streamlit.app/) | [API Documentation](http://data-agent-api-alb-919427104.eu-north-1.elb.amazonaws.com/docs#/Configuration)
 
 ## Installation
 
