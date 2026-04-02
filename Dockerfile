@@ -23,8 +23,8 @@ RUN uv pip install --system --no-cache -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Expose ports for both FastAPI and Streamlit
-EXPOSE 8000 8501
+# Expose port for FastAPI
+EXPOSE 8000
 
 # The default command (can be overridden in docker-compose or AWS task definition)
 CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]

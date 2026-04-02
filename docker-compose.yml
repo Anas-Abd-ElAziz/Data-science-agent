@@ -8,15 +8,3 @@ services:
       - .env
     command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
-
-  frontend:
-    build: .
-    container_name: data-science-frontend
-    ports:
-      - "8501:8501"
-    env_file:
-      - .env
-    command: ["streamlit", "run", "streamlit_app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
-    restart: unless-stopped
-    depends_on:
-      - api

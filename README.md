@@ -43,6 +43,7 @@ When these variables are present, the FastAPI backend and Streamlit frontend wil
 * **Multi-Tool Execution:** The agent can now execute multiple Python scripts sequentially in a single turn without dropping intermediate data or figures.
 * **Type Serialization:** Safely serializes complex pandas types (Intervals, Timedeltas, NumPy scalars) preventing JSON API crashes.
 * **FastAPI Backend:** The agent logic is now completely decoupled from Streamlit and served via a production-ready `api.py` layer.
+* **Docker & AWS Deployment:** Fully containerized the API layer and integrated it with AWS ECS via GitHub Actions for automated deployment.
 
 ## Tech Stack
 
@@ -89,7 +90,7 @@ export GOOGLE_API_KEY=your_api_key_here
 
 ### Running Locally via Docker (Recommended)
 
-You can run both the FastAPI backend and Streamlit frontend in isolated containers using Docker Compose.
+You can run the FastAPI backend in an isolated container using Docker Compose.
 
 1. Ensure your `.env` file is set up with your `GOOGLE_API_KEY`.
 2. Run the following command:
@@ -98,7 +99,6 @@ docker-compose up --build
 ```
 This will start:
 - **FastAPI API** on `http://localhost:8000`
-- **Streamlit UI** on `http://localhost:8501`
 
 ### Running the Streamlit App (Without Docker)
 
@@ -118,18 +118,20 @@ The Streamlit uploader supports `.csv`, `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.ods
 
 ## AWS Deployment Guide
 
-When deploying to AWS (e.g., ECS Fargate, App Runner), you should **never** hardcode API keys or commit your `.env` file. 
+This project is configured to deploy automatically to AWS ECS (Fargate) using GitHub Actions.
 
-1. **Build & Push**: Build the image locally (`docker build -t data-science-agent .`) and push it to AWS ECR.
-2. **Deploy Containers**: Deploy the same image twice (once for the frontend service, once for the backend service).
-   - For the API container, set the command to: `uvicorn api:app --host 0.0.0.0 --port 8000`
-   - For the UI container, set the command to: `streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0`
-3. **Inject Secrets**: Use the AWS Console to inject your `GOOGLE_API_KEY` and `LANGFUSE_*` variables securely into the container environment at runtime.
+1. **GitHub Actions Workflow**: The `.github/workflows/deploy.yml` workflow automatically builds the Docker image, pushes it to AWS ECR, and updates the ECS service upon passing checks.
+2. **Secrets Management**: You must store AWS deployment credentials and the application environment variables (like `GOOGLE_API_KEY` and `LANGFUSE_*`) securely in AWS Parameter Store or Secrets Manager, as well as set GitHub Secrets for CI/CD authentication.
+3. **Containerized API**: The GitHub action manages rolling updates to the single container, executing the FastAPI backend robustly.
 
 ## Project Structure
 
 ```
 Data-science-agent/
+├── .github/
+│   └── workflows/
+│       ├── deploy.yml             # GitHub Actions CI/CD for AWS deployment
+│       └── deploy.yml-first-deploy# Initial deployment workflow to push the first image to ECR (needed before creating ECS task/service)
 ├── agent/
 │   ├── __init__.py        # Public package API
 │   ├── config.py          # Configuration, system prompt, and LLM setup
@@ -139,6 +141,8 @@ Data-science-agent/
 │   └── service.py         # Shared service layer (AgentSession, serialization)
 ├── streamlit_app.py       # Streamlit web interface
 ├── api.py                 # FastAPI backend entrypoint
+├── Dockerfile             # Docker container definition
+├── docker-compose.yml     # Local container orchestration
 ├── requirements.in        # Top-level dependencies
 ├── requirements.txt       # Locked dependencies
 ├── .env                   # Environment variables (Langfuse, API keys)
@@ -222,7 +226,6 @@ As the project grew, some code accumulated redundancy: a duplicate escape-sequen
 
 ## Next Steps
 
-- **Dockerization** - Containerize the application for easier deployment
 - **Support for multiple DataFrames** - right now it only works with one
 - **Support for SQL databases** - not just CSV files
 
