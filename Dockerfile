@@ -1,10 +1,40 @@
-# Use a lightweight Python base image matching our project
-FROM python:3.12-slim
+# Pin the distro so package availability does not drift underneath the build.
+FROM python:3.12.13-slim-bookworm AS python-base
 
-# Install nsjail for OS-level code sandboxing
+# Runtime libraries required by the compiled nsjail binary.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nsjail && \
+    apt-get install -y --no-install-recommends \
+        libc6 \
+        libnl-route-3-200 \
+        libprotobuf32 \
+        libstdc++6 && \
     rm -rf /var/lib/apt/lists/*
+
+FROM python-base AS nsjail-build
+
+ARG NSJAIL_VERSION=3.6
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        autoconf \
+        bison \
+        flex \
+        g++ \
+        gcc \
+        git \
+        libnl-route-3-dev \
+        libprotobuf-dev \
+        libtool \
+        make \
+        pkg-config \
+        protobuf-compiler && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp/nsjail
+RUN git clone --depth 1 --branch "${NSJAIL_VERSION}" https://github.com/google/nsjail.git . && \
+    make
+
+FROM python-base
 
 # uv configuration
 # Set environment variables
@@ -15,6 +45,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Install uv for fast dependency installation
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=nsjail-build /tmp/nsjail/nsjail /usr/local/bin/nsjail
 
 # Set working directory
 WORKDIR /app

@@ -205,6 +205,8 @@ uv run uvicorn api:app --reload --host 0.0.0.0 --port 8000
 docker-compose up --build
 ```
 
+The Docker image builds `nsjail` from the upstream source release during image creation and ships the compiled binary in the final runtime image.
+
 `docker-compose.yml` runs the API container in privileged mode with `SYS_ADMIN` so `nsjail` works locally the same way it does on ECS EC2.
 
 ## API Flow
