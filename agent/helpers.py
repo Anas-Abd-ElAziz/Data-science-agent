@@ -183,21 +183,44 @@ def _run_code_in_sandbox(code: str, df: pd.DataFrame) -> dict:
         code_file = sandbox_path / "tool_code.py"
         dataframe_file = sandbox_path / "dataframe.pkl"
         output_file = sandbox_path / "result.json"
+        runner_file = sandbox_path / "sandbox_runner.py"
+
+        jailed_code_file = Path("/sandbox/tool_code.py")
+        jailed_dataframe_file = Path("/sandbox/dataframe.pkl")
+        jailed_output_file = Path("/sandbox/result.json")
+        jailed_runner_file = Path("/sandbox/sandbox_runner.py")
 
         code_file.write_text(code, encoding="utf-8")
         with dataframe_file.open("wb") as handle:
             pickle.dump(df, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        shutil.copy2(SANDBOX_RUNNER_PATH, runner_file)
 
-        python_command = [
+        local_python_command = [
             sys.executable,
             "-I",
-            str(SANDBOX_RUNNER_PATH),
+            str(runner_file),
             "--code-file",
             str(code_file),
             "--df-file",
             str(dataframe_file),
             "--output-file",
             str(output_file),
+            "--timeout-seconds",
+            str(SANDBOX_TIMEOUT_SECONDS),
+            "--memory-limit-mb",
+            str(SANDBOX_MEMORY_LIMIT_MB),
+        ]
+
+        jailed_python_command = [
+            sys.executable,
+            "-I",
+            str(jailed_runner_file),
+            "--code-file",
+            str(jailed_code_file),
+            "--df-file",
+            str(jailed_dataframe_file),
+            "--output-file",
+            str(jailed_output_file),
             "--timeout-seconds",
             str(SANDBOX_TIMEOUT_SECONDS),
             "--memory-limit-mb",
@@ -214,10 +237,10 @@ def _run_code_in_sandbox(code: str, df: pd.DataFrame) -> dict:
                 "--bindmount",
                 f"{sandbox_dir}:/sandbox",
                 "--",
-                *python_command,
+                *jailed_python_command,
             ]
         else:
-            command = python_command
+            command = local_python_command
 
         try:
             completed = subprocess.run(
@@ -261,7 +284,7 @@ def _run_code_in_sandbox(code: str, df: pd.DataFrame) -> dict:
             )
             try:
                 completed = subprocess.run(
-                    python_command,
+                    local_python_command,
                     cwd=sandbox_dir,
                     env=_build_sandbox_env(),
                     capture_output=True,
