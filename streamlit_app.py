@@ -152,15 +152,15 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("🔐 Enter API Key (temporary for this session)")
+    st.header("🔐 Enter Gemini API Key (temporary for this session)")
     if "api_key" not in st.session_state:
         st.session_state.api_key = ""
 
     entered_key = st.text_input(
-        "Google API Key",
+        "Gemini API Key",
         value=st.session_state.api_key,
         type="password",
-        placeholder="Enter your Google API key here",
+        placeholder="Enter your Gemini API key here",
         key="apikey_input",
     )
 

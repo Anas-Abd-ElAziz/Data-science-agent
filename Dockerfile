@@ -1,10 +1,15 @@
 # Use a lightweight Python base image matching our project
 FROM python:3.12-slim
 
+# Install nsjail for OS-level code sandboxing
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends nsjail && \
+    rm -rf /var/lib/apt/lists/*
+
+# uv configuration
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    # uv config
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 

@@ -21,3 +21,7 @@ tabulate
 uvicorn
 fastapi
 python-multipart
+boto3
+redis>=5.2,<6
+hiredis
+langgraph-checkpoint-redis==0.2.1

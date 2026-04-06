@@ -10,16 +10,6 @@ from .config import MessagesStateWithTools, system_message
 from .helpers import _normalize_message_content, extract_code_and_thoughts, python_repl
 
 
-def _extract_message_content(message) -> str:
-    if hasattr(message, "content"):
-        return _normalize_message_content(message.content)
-
-    if isinstance(message, dict):
-        return _normalize_message_content(message.get("content", ""))
-
-    return ""
-
-
 def create_agent_node(llm_with_tools) -> Callable[[MessagesStateWithTools], dict]:
     def call_agent(state: MessagesStateWithTools) -> dict:
         messages = state["messages"]
@@ -88,7 +78,11 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
             "tool_results": tool_results,
         }
 
-    content = _extract_message_content(last_message)
+    content = _normalize_message_content(
+        last_message.content if hasattr(last_message, "content")
+        else last_message.get("content", "") if isinstance(last_message, dict)
+        else ""
+    )
     if content:
         tool_results.append(
             {
@@ -107,12 +101,16 @@ def tools_node(state: MessagesStateWithTools, df) -> dict:
             else getattr(tc, "id", str(uuid.uuid4()))
         )
 
-        code, thoughts = extract_code_and_thoughts(last_message, tc)
+        code, thoughts = extract_code_and_thoughts(tc)
         code = code or ""
         thoughts = thoughts or ""
 
         if name == "python_repl":
-            tool_result = python_repl(code=code, thoughts=thoughts, df=df)
+            tool_result = python_repl(
+                code=code,
+                thoughts=thoughts,
+                df=df,
+            )
         else:
             tool_result = {
                 "stdout": "",
@@ -186,7 +184,11 @@ def store_response(state: MessagesStateWithTools) -> dict:
     """
     messages = state["messages"]
     last_message = messages[-1]
-    content = _extract_message_content(last_message)
+    content = _normalize_message_content(
+        last_message.content if hasattr(last_message, "content")
+        else last_message.get("content", "") if isinstance(last_message, dict)
+        else ""
+    )
 
     ai_message_result = {
         "type": "ai_message",

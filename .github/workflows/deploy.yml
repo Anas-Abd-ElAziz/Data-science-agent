@@ -3,6 +3,7 @@ name: Deploy to ECS
 on:
   push:
     branches: [ "master" ]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -23,16 +24,40 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
     - name: Build, tag, and push image
       id: build-image
       run: |
         IMAGE_TAG=${{ github.sha }}
         IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/data-agent-rep:$IMAGE_TAG
 
-        docker build -t $IMAGE_URI .
-        docker push $IMAGE_URI
+        docker buildx build \
+          --cache-from type=gha \
+          --cache-to type=gha,mode=max \
+          --push \
+          -t $IMAGE_URI \
+          -t ${{ steps.login-ecr.outputs.registry }}/data-agent-rep:latest \
+          .
 
         echo "image=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+    - name: Inject environment variables into task definition
+      run: |
+        jq '.containerDefinitions[0].environment = [
+          {"name": "REDIS_URL",                   "value": "${{ secrets.REDIS_URL }}"},
+          {"name": "S3_DATASET_BUCKET",           "value": "${{ secrets.S3_DATASET_BUCKET }}"},
+          {"name": "S3_DATASET_PREFIX",           "value": "datasets"},
+          {"name": "S3_DELETE_ON_SESSION_DELETE",  "value": "false"},
+          {"name": "AWS_REGION",                  "value": "eu-north-1"},
+          {"name": "LANGFUSE_PUBLIC_KEY",         "value": "${{ secrets.LANGFUSE_PUBLIC_KEY }}"},
+          {"name": "LANGFUSE_SECRET_KEY",         "value": "${{ secrets.LANGFUSE_SECRET_KEY }}"},
+          {"name": "LANGFUSE_BASE_URL",           "value": "${{ secrets.LANGFUSE_BASE_URL }}"},
+          {"name": "PYTHON_REPL_TIMEOUT_SECONDS", "value": "20"},
+          {"name": "PYTHON_REPL_MEMORY_LIMIT_MB", "value": "512"}
+        ] | del(.containerDefinitions[0].secrets)' .aws/task-definition.json > .aws/task-definition-final.json
+        mv .aws/task-definition-final.json .aws/task-definition.json
 
     - name: Fill in new image ID in task definition
       id: task-def

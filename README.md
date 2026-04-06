@@ -1,259 +1,336 @@
-# Data Science Agent with LangChain & LangGraph
+# Data Science Agent
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://data-science-agent.streamlit.app/)
 [![API Docs](https://img.shields.io/badge/API-Docs-blue)](http://data-agent-api-alb-919427104.eu-north-1.elb.amazonaws.com/docs#/Configuration)
 
-An AI-powered data science agent that can analyze CSV and spreadsheet data, generate visualizations, and perform machine learning tasks using natural language.
+Conversational data analysis with LangChain, LangGraph, Gemini, pandas, and Plotly.
 
 ## Overview
 
-This project is a conversational AI agent built with LangChain and LangGraph that can:
-- Analyze pandas DataFrames through natural language queries
-- Generate interactive Plotly visualizations
-- Perform machine learning tasks with scikit-learn
-- Maintain conversation history across sessions
-- Execute Python code dynamically in a controlled environment
+This project has two entrypoints:
+
+- `streamlit_app.py`: local interactive UI with an in-memory `AgentSession`
+- `api.py`: FastAPI backend with optional Redis- and S3-backed persistence for API sessions
+
+The agent can:
+
+- inspect uploaded CSV and spreadsheet files
+- write Python to analyze the dataset
+- generate Plotly figures
+- return tool logs and final answers
+- keep conversational state through LangGraph checkpoints
+
+## Current Architecture
+
+The LangGraph flow is:
+
+```text
+START -> Agent -> Tools -> Agent -> Store Response -> END
+```
+
+Core pieces:
+
+- `agent/config.py`: LLM setup and system prompt
+- `agent/nodes.py`: LangGraph nodes
+- `agent/helpers.py`: code extraction and sandboxed `python_repl`
+- `agent/service.py`: `AgentSession` runtime container
+- `agent/graph.py`: graph construction wrapper
+- `agent/session_store.py`: Redis-backed API session metadata, recent messages, and figure state
+- `agent/dataset_store.py`: S3-backed uploaded dataset storage for the API
+
+## Important Behavior
+
+### FastAPI API
+
+- API sessions are identified by `session_id`
+- uploaded datasets can be stored in S3
+- session metadata, recent chat history, and restored figures can be stored in Redis
+- Redis can also be used as the LangGraph checkpointer backend
+- Gemini API keys are set per session and are **memory-only** for live API sessions
+- if the API restarts and a session is restored from Redis, the client must call `POST /sessions/{id}/api-key` again before querying
+
+### Streamlit App
+
+- Streamlit still uses a local in-memory `AgentSession`
+- it does not automatically use the FastAPI Redis session store or S3 dataset store
+- it is best treated as the interactive local/demo UI
+
+### Session TTL
+
+Redis session TTL is refreshed on mutating activity only:
+
+- create session
+- set API key
+- upload file
+- run query
+- clear session
+
+Read endpoints do not extend TTL.
+
+## Python Execution Safety
+
+The `python_repl` tool no longer runs raw in-process `exec()` inside the API worker.
+
+Execution backend:
+
+- constrained subprocess sandbox in this repository
+
+The local sandbox uses:
+
+- code validation before execution
+- restricted imports and builtins
+- blocked network access
+- execution timeout
+- memory limit controls
 
 ## Features
 
-- **Natural Language Interface**: Ask questions about your data in plain English
-- **Smart Code Execution**: The agent writes and executes Python code to answer your queries
-- **Visualization Support**: Automatically generates interactive Plotly charts and keeps them as in-memory JSON for rendering
-- **Memory Persistence**: Remembers conversation context using LangGraph's checkpointing
-- **Tool Results Tracking**: Stores all tool executions and AI responses for better traceability
-- **Web Interface**: User-friendly Streamlit interface for easy interaction
-- **REST API**: Production-ready FastAPI backend for integration into other applications
-- **Spreadsheet Upload Support**: Accepts CSV, Excel, and OpenDocument spreadsheet files and resets chat context when the uploaded file changes
-- **Observability & Tracing**: Fully integrated with Langfuse to monitor LLM costs, trace multi-step reasoning, and track latency
+- natural language analysis over uploaded tabular data
+- Plotly chart generation
+- tool execution logs in both API and Streamlit flows
+- Redis-backed API session metadata, recent messages, and figure state
+- optional Redis LangGraph checkpoint persistence
+- optional S3-backed dataset storage for API uploads
+- Langfuse callback-based tracing
+- Docker and ECS deployment support
 
-## Observability & Tracing (Langfuse)
+## Setup
 
-This application has built-in support for [Langfuse](https://langfuse.com/) to monitor LLM costs, trace multi-step agent reasoning (LangGraph), and track latency.
+1. Clone the repository.
 
-To enable tracing, add your Langfuse credentials to a `.env` file in the root directory:
-
-```env
-LANGFUSE_PUBLIC_KEY="pk-lf-..."
-LANGFUSE_SECRET_KEY="sk-lf-..."
-LANGFUSE_BASE_URL="http://localhost:3000" # Or https://cloud.langfuse.com
-```
-
-When these variables are present, the FastAPI backend and Streamlit frontend will automatically generate full execution traces for every user query.
-
-## Recent Updates
-* **Multi-Tool Execution:** The agent can now execute multiple Python scripts sequentially in a single turn without dropping intermediate data or figures.
-* **Type Serialization:** Safely serializes complex pandas types (Intervals, Timedeltas, NumPy scalars) preventing JSON API crashes.
-* **FastAPI Backend:** The agent logic is now completely decoupled from Streamlit and served via a production-ready `api.py` layer.
-* **Docker & AWS Deployment:** Fully containerized the API layer and integrated it with AWS ECS via GitHub Actions for automated deployment.
-
-## Tech Stack
-
-- **LangChain**: For LLM integration and tool management
-- **LangGraph**: For building the agent workflow with state management
-- **Google Gemini 3.1 Flash Lite**: The underlying language model
-- **Pandas**: Data manipulation and analysis
-- **Plotly**: Interactive data visualization
-- **Scikit-learn**: Machine learning capabilities
-- **Streamlit**: Web interface for the application
-- **FastAPI**: REST API layer for application integration
-- **Langfuse**: Observability and execution tracing
-
-## Live Demo
-
-Try the live application here: [Data Science Agent on Streamlit](https://data-science-agent.streamlit.app/) | [API Documentation](http://data-agent-api-alb-919427104.eu-north-1.elb.amazonaws.com/docs#/Configuration)
-
-## Installation
-
-1. Clone the repository:
 ```bash
 git clone https://github.com/Anas-Abd-ElAziz/Data-science-agent
 cd Data-science-agent
 ```
 
-2. Install dependencies using [uv](https://github.com/astral-sh/uv) (recommended):
+2. Create and activate a virtual environment.
+
 ```bash
 uv venv
-# On Windows: .venv\Scripts\activate
-# On Linux/Mac: source .venv/bin/activate
+# Windows
+.venv\Scripts\activate
+
+# Linux / macOS
+source .venv/bin/activate
+```
+
+3. Install dependencies.
+
+```bash
 uv pip install -r requirements.txt
 ```
 
-3. Set up your API key:
-```bash
-# Windows
-set GOOGLE_API_KEY=your_api_key_here
+4. Copy `.env.example` to `.env` and fill in the values you need.
 
-# Linux/Mac
-export GOOGLE_API_KEY=your_api_key_here
+## Environment Variables
+
+### Langfuse
+
+```env
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=http://localhost:3000
 ```
 
-## Usage
+### Redis
 
-### Running Locally via Docker (Recommended)
+Use either `REDIS_URL` or the host/port fields.
 
-You can run the FastAPI backend in an isolated container using Docker Compose.
-
-1. Ensure your `.env` file is set up with your `GOOGLE_API_KEY`.
-2. Run the following command:
-```bash
-docker-compose up --build
+```env
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_USERNAME=
+REDIS_PASSWORD=
+REDIS_URL=
+REDIS_SESSION_TTL_SECONDS=86400
+REDIS_SOCKET_TIMEOUT_SECONDS=3
+REDIS_CONNECT_TIMEOUT_SECONDS=3
 ```
-This will start:
-- **FastAPI API** on `http://localhost:8000`
 
-### Running the Streamlit App (Without Docker)
+Redis is used for:
+
+- API session metadata, recent chat history, and restored figure state
+- optional LangGraph checkpoint storage
+
+### S3 Dataset Storage
+
+```env
+AWS_REGION=eu-north-1
+S3_DATASET_BUCKET=
+S3_DATASET_PREFIX=datasets
+S3_DELETE_ON_SESSION_DELETE=false
+```
+
+When configured, API uploads are stored under keys like:
+
+```text
+datasets/<session_id>/<filename>
+```
+
+### Python Sandbox
+
+```env
+PYTHON_REPL_TIMEOUT_SECONDS=20
+PYTHON_REPL_MEMORY_LIMIT_MB=512
+```
+
+Behavior:
+
+- on Linux containers with `nsjail` available, code runs with kernel-level isolation on top of the subprocess sandbox
+- on platforms without `nsjail`, the app falls back to the constrained subprocess sandbox only
+
+## Running Locally
+
+Gemini API keys are entered at runtime:
+
+- in Streamlit, use the sidebar field
+- in FastAPI, call `POST /sessions/{id}/api-key`
+
+### Streamlit
 
 ```bash
 uv run streamlit run streamlit_app.py
 ```
 
-### Running the FastAPI Backend (Without Docker)
+### FastAPI
 
 ```bash
 uv run uvicorn api:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Then open your browser to the URL shown in the terminal (typically `http://localhost:8501`).
+### Docker Compose
 
-The Streamlit uploader supports `.csv`, `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.ods`, `.odf`, and `.odt` files.
+```bash
+docker-compose up --build
+```
 
-## AWS Deployment Guide
+`docker-compose.yml` runs the API container in privileged mode with `SYS_ADMIN` so `nsjail` works locally the same way it does on ECS EC2.
 
-This project is configured to deploy automatically to AWS ECS (Fargate) using GitHub Actions.
+## API Flow
 
-1. **GitHub Actions Workflow**: The `.github/workflows/deploy.yml` workflow builds the Docker image, pushes it to an AWS ECR repository (`data-agent-rep`), and updates the ECS service in the `eu-north-1` region.
-2. **Task Definition**: The ECS task definition is maintained locally within the repository under `.aws/task-definition.json`. It deploys a single container named `api`.
-3. **Secrets Management**: You must store AWS deployment credentials and configuration properties (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `ECS_SERVICE`, and `ECS_CLUSTER`) as GitHub Secrets. Application variables (like `GOOGLE_API_KEY` and `LANGFUSE_*`) should be handled effectively in AWS via parameter store/secrets manager.
-4. **Containerized API**: The GitHub action manages rolling updates to the container, executing the FastAPI backend robustly.
+Typical API usage looks like this:
+
+1. `POST /sessions`
+2. `POST /sessions/{id}/api-key`
+3. `POST /sessions/{id}/upload`
+4. `POST /sessions/{id}/query`
+5. optional `GET /sessions/{id}/data/preview`
+
+Important details:
+
+- if Redis is enabled, sessions can be restored after restart
+- if S3 is enabled, uploaded datasets can be reloaded after restart
+- after a restore, the Gemini API key must be set again because it is not stored in Redis
+
+## Health Endpoint
+
+`GET /health` reports:
+
+- `status`
+- `active_sessions`
+- `dataset_store`
+- `graph_checkpointer`
+- `langfuse`
+- `python_repl_backend`
+- `session_store`
+
+`status` is `ok` during normal operation and `degraded` when optional services like Redis or S3 are configured but currently unavailable.
+
+## AWS / ECS Notes
+
+This stack is currently deployed on ECS EC2, not Fargate.
+
+The API task uses:
+
+- an `executionRoleArn` for image pulls and logs
+- a `taskRoleArn` for S3 access from `boto3`
+- `networkMode: bridge`
+- `requiresCompatibilities: ["EC2"]`
+- a privileged container with `SYS_ADMIN` so `nsjail` can start
+
+If you use S3 dataset storage, the task role should allow at least:
+
+- `s3:ListBucket` on the dataset bucket
+- `s3:GetObject`
+- `s3:PutObject`
+- optional `s3:DeleteObject`
+
+Recommended AWS setup:
+
+- Redis for API session metadata and optional graph checkpoints
+- S3 for uploaded datasets
+- GitHub Actions secrets for deploy-time configuration
+- an S3 lifecycle rule to expire dataset objects after `1 day` if you want `24h` retention
+
+The checked-in deploy workflow injects runtime environment variables into the ECS task definition from GitHub secrets. Keep these secrets up to date in GitHub:
+
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `ECS_CLUSTER`
+- `ECS_SERVICE`
+- `REDIS_URL`
+- `S3_DATASET_BUCKET`
+- `LANGFUSE_PUBLIC_KEY`
+- `LANGFUSE_SECRET_KEY`
+- `LANGFUSE_BASE_URL`
+
+## Limitations
+
+- API authentication is still minimal
+- Streamlit and FastAPI do not share the same runtime session store
+- restored API sessions recover metadata, recent messages, figures, and dataset references, but they still require `set_api_key` again
+- Streamlit state and per-query tool results are still in-memory only
+- Redis checkpoint storage can grow quickly on small Redis plans
+- the Python sandbox is safer than raw `exec()`, but not equivalent to isolated per-job containers
 
 ## Project Structure
 
-```
+```text
 Data-science-agent/
 ├── .aws/
-│   └── task-definition.json       # AWS ECS task definition configuration
+│   └── task-definition.json
 ├── .github/
 │   └── workflows/
-│       ├── deploy.yml             # GitHub Actions CI/CD for AWS deployment
-│       └── deploy.yml-first-deploy# Initial deployment workflow to push the first image to ECR (needed before creating ECS task/service)
 ├── agent/
-│   ├── __init__.py        # Public package API
-│   ├── config.py          # Configuration, system prompt, and LLM setup
-│   ├── graph.py           # LangGraph graph construction (DataScienceGraph)
-│   ├── helpers.py         # Code cleaning, extraction, and python_repl execution
-│   ├── nodes.py           # LangGraph node functions
-│   └── service.py         # Shared service layer (AgentSession, serialization)
-├── streamlit_app.py       # Streamlit web interface
-├── api.py                 # FastAPI backend entrypoint
-├── Dockerfile             # Docker container definition
-├── docker-compose.yml     # Local container orchestration
-├── requirements.in        # Top-level dependencies
-├── requirements.txt       # Locked dependencies
-├── .env                   # Environment variables (Langfuse, API keys)
-├── .python-version        # Python version specification for uv
-├── .gitignore
+│   ├── __init__.py
+│   ├── checkpoint_store.py
+│   ├── config.py
+│   ├── dataset_store.py
+│   ├── graph.py
+│   ├── helpers.py
+│   ├── nodes.py
+│   ├── service.py
+│   └── session_store.py
+├── api.py
+├── streamlit_app.py
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.in
+├── requirements.txt
 └── README.md
 ```
 
-## Architecture
+## Tech Stack
 
-The agent uses a custom LangGraph workflow:
+- LangChain
+- LangGraph
+- Google Gemini
+- pandas
+- Plotly
+- scikit-learn
+- FastAPI
+- Streamlit
+- Redis
+- Amazon S3
+- Langfuse
 
-```
-START → Agent → Tools → Agent → Store Response → END
-```
+## Next Improvements
 
-- **Agent Node**: Calls the LLM to decide what to do
-- **Tools Node**: Executes Python code with the `python_repl` tool
-- **Store Response Node**: Captures AI responses for display
-- **Custom State**: Extends `MessagesState` to track tool results and dataframe
-
-## Key Components
-
-### Agent Module (`agent/`)
-
-- **config.py**: Handles API key configuration, system prompts, and LLM initialization
-- **graph.py**: Defines the `DataScienceGraph` class and the LangGraph wiring with DataFrame injection
-- **helpers.py**: Contains utility functions for code cleaning, extraction, and execution
-- **nodes.py**: Implements the graph nodes (agent, tools, response storage)
-- **service.py**: The shared backend service layer — `AgentSession`, file loading, result normalization, and figure deduplication. Has no Streamlit dependency, making it reusable for a future API layer.
-
-### Streamlit Interface
-
-The `streamlit_app.py` provides:
-- CSV file upload functionality
-- Interactive chat interface
-- Visualization display
-- Tool execution logs
-- Session management
-
-## Challenges I Faced
-
-### 1. **Global State Management**
-At first, I was using `globals().get("df")` everywhere to access the dataframe. It worked in the notebook but would break if I tried to turn this into a proper module or restart the kernel.
-
-**Solution**: I learned to use LangGraph's state management properly by adding the dataframe to my custom state class and implementing a graph wrapper for dynamic DataFrame injection. This made the code much cleaner and more maintainable!
-
-Later, I ran into a second version of the same problem: the app relied on module-level objects like a global graph instance and a global tool-bound LLM. That worked for a single Streamlit flow, but it would become a problem for a future FastAPI version because multiple sessions could end up sharing runtime state.
-
-**Solution**: I introduced a shared backend session layer with `AgentSession`, moved graph/model creation to dependency-injected builders, and used `agent/__init__.py` to expose the backend pieces cleanly. This keeps Streamlit working while making the core architecture ready for a future API layer.
-
-### 2. **Tool Result Visibility**
-The agent was executing code, but I couldn't see what was happening between tool calls. The conversation felt like a black box.
-
-**Solution**: I created a custom `store_response` node and added a `tool_results` list to the state. Now I can track every tool execution and AI response in order. This was actually pretty cool to implement!
-
-### 3. **Code String Parsing**
-The LLM sometimes returned code wrapped in markdown blocks (```python ... ```), and other times it had weird escape sequences like `\\n` instead of actual newlines. This broke the `exec()` function constantly.
-
-**Solution**: Built a `clean_code_string()` helper function that handles both markdown removal and escape sequence conversion. Took some trial and error but now it's solid.
-
-### 4. **Making Libraries Available**
-I kept getting `NameError: name 'pd' is not defined` even though pandas was imported at the notebook level. Turns out the `exec()` environment is isolated!
-
-**Solution**: Had to explicitly pass all needed libraries (pd, px, go, sklearn) into the `env_vars` dict. Now the agent can use any of these libraries in its generated code.
-
-### 5. **Final Response Not Appearing Reliably**
-Sometimes the model clearly finished the analysis, but the Streamlit app still showed "The agent didn't generate a response." The real issue was that the final AI message was not always being routed and stored cleanly inside the graph state.
-
-**Solution**: I fixed the LangGraph flow so final AI responses are detected more reliably, normalized before reading, and returned as explicit `tool_results` state updates instead of depending on in-place mutation.
-
-### 6. **Plot Serialization for the UI**
-I originally stored generated figures as pickle files on disk so Streamlit could load them later, but that made the app more filesystem-dependent and less suitable for a future API layer.
-
-**Solution**: I switched the app to serialize Plotly figures as JSON payloads in memory, keep them inside `tool_results`, and reconstruct them directly in Streamlit when rendering the chat.
-
-### 7. **Preparing the Backend for FastAPI**
-As the project grew, some code accumulated redundancy: a duplicate escape-sequence cleanup pass, a `getattr` chain that a `try/except` block already covered, a one-liner method wrapper, an unused return value, a pass-through factory function, and a Streamlit-version compatibility shim that had been dead since Streamlit 1.33.
-
-**Solution**: Systematically removed all of it. The agent's response dict also leaked raw LangChain message objects (not JSON-serializable), which were replaced with plain `{"role", "content"}` dicts. The backend (`AgentSession`) now has zero Streamlit dependency and returns a fully serializable result — ready to be served by a FastAPI layer.
-
-## Next Steps
-
-- **Support for multiple DataFrames** - right now it only works with one
-- **Support for SQL databases** - not just CSV files
-
-## What I Learned
-
-1. **State management** - LangGraph's state manipulation and custom state classes
-2. **Tool design** - The `python_repl` tool is simple but needed a lot of thought
-3. **Prompting** - Changed the system prompt multiple times to get the best results from the agent
-4. **Modularization** - How to structure a project for maintainability and deployment
-5. **Web deployment** - Using Streamlit for quick prototyping and deployment
-6. **Session architecture** - How to separate UI session handling from reusable backend runtime logic
-
-## Contributing
-
-If you have suggestions or find bugs, feel free to open an issue!
+- add real API authentication and authorization
+- persist Streamlit state and per-query tool results beyond process memory
+- consider a fully isolated executor service for model-written Python
 
 ## License
 
-MIT License - feel free to use this for your own learning!
-
-## Acknowledgments
-
-- [LangChain](https://python.langchain.com/) and [LangGraph](https://langchain-ai.github.io/langgraph/) for the excellent agent orchestration framework
-- [Streamlit](https://streamlit.io/) for making web deployments so accessible
-- [FastAPI](https://fastapi.tiangolo.com/) for the robust, production-ready API layer
-- [Langfuse](https://langfuse.com/) for providing fantastic open-source LLM observability
-- [uv](https://github.com/astral-sh/uv) by Astral for incredibly fast Python package management
+MIT

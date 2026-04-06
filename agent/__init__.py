@@ -1,24 +1,29 @@
 """Data Science Agent - shared backend components for UI and API layers."""
 
-from .config import DEFAULT_MODEL, build_llm_with_tools
+from .checkpoint_store import build_redis_checkpointer
+from .config import DEFAULT_MODEL
+from .dataset_store import (
+    DatasetNotFoundError,
+    DatasetStoreConfigError,
+    DatasetStoreError,
+    S3DatasetStore,
+)
 from .graph import DataScienceGraph
 from .service import (
     AgentSession,
     SUPPORTED_UPLOAD_TYPES,
     get_figure_identifier,
-    get_uploaded_file_signature,
-    load_tabular_bytes,
-    normalize_agent_result,
 )
 
 __all__ = [
     "AgentSession",
     "DEFAULT_MODEL",
-    "SUPPORTED_UPLOAD_TYPES",
+    "DatasetNotFoundError",
+    "DatasetStoreConfigError",
+    "DatasetStoreError",
     "DataScienceGraph",
-    "build_llm_with_tools",
+    "SUPPORTED_UPLOAD_TYPES",
+    "S3DatasetStore",
+    "build_redis_checkpointer",
     "get_figure_identifier",
-    "get_uploaded_file_signature",
-    "load_tabular_bytes",
-    "normalize_agent_result",
 ]

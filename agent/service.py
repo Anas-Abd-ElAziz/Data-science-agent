@@ -4,22 +4,16 @@ from datetime import datetime
 from io import BytesIO
 import hashlib
 import os
+from uuid import uuid4
 
 import pandas as pd
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from .config import DEFAULT_MODEL, build_llm_with_tools
+from .dataset_store import DatasetStoreConfigError
 from .graph import DataScienceGraph
 from .helpers import _normalize_message_content
-
-try:
-    from langfuse.langchain import CallbackHandler
-
-    LANGFUSE_AVAILABLE = True
-except ImportError:
-    LANGFUSE_AVAILABLE = False
-    CallbackHandler = None
 
 
 EXCEL_ENGINES = {
@@ -36,21 +30,12 @@ SUPPORTED_UPLOAD_TYPES = ("csv", *[ext.lstrip(".") for ext in EXCEL_ENGINES])
 
 
 def build_thread_id(prefix: str = "session") -> str:
-    return f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    return f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
 
 
 def get_figure_identifier(figure_payload) -> str:
-    if not isinstance(figure_payload, dict):
-        return ""
-
-    figure_id = figure_payload.get("id")
-    if figure_id:
-        return str(figure_id)
-
-    figure_json = figure_payload.get("figure_json", "")
-    if figure_json:
-        return hashlib.sha256(figure_json.encode("utf-8")).hexdigest()
-
+    if isinstance(figure_payload, dict):
+        return str(figure_payload.get("id", ""))
     return ""
 
 
@@ -100,17 +85,29 @@ def extract_final_answer(new_tool_results: list[dict], new_messages=None) -> str
 class AgentSession:
     """Per-session runtime container with no module-level mutable state."""
 
-    def __init__(self, api_key: str | None = None, model: str = DEFAULT_MODEL):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = DEFAULT_MODEL,
+        checkpointer=None,
+        dataset_store=None,
+        session_id: str | None = None,
+    ):
         self.api_key = api_key
         self.model = model
+        self.session_id = session_id
         self.df = None
-        self.memory = MemorySaver()
+        self.memory = checkpointer or MemorySaver()
+        self.uses_shared_checkpointer = not isinstance(self.memory, MemorySaver)
+        self.dataset_store = dataset_store
         self.llm_with_tools = None
         self.graph = None
         self.thread_id = build_thread_id()
         self.messages = []
         self.last_tool_results = []
+        self.file_signature = None
         self.uploaded_file_signature = None
+        self.dataset_ref = None
         self.figures = []
 
         if api_key:
@@ -123,9 +120,12 @@ class AgentSession:
 
         self.graph = DataScienceGraph(
             llm_with_tools=self.llm_with_tools,
-            df_getter=lambda: self.df,
+            df_getter=lambda: self.get_df(),
             memory=self.memory,
         )
+
+    def set_session_id(self, session_id: str) -> None:
+        self.session_id = session_id
 
     def set_api_key(self, api_key: str, model: str | None = None):
         self.api_key = api_key
@@ -135,12 +135,53 @@ class AgentSession:
         self.llm_with_tools = build_llm_with_tools(api_key=api_key, model=self.model)
         self._rebuild_graph()
 
-    def load_uploaded_file(self, file_bytes: bytes, filename: str):
-        file_signature = get_uploaded_file_signature(file_bytes, filename)
-        file_changed = file_signature != self.uploaded_file_signature
+    def has_data(self) -> bool:
+        return self.df is not None or self.dataset_ref is not None
 
-        self.df = load_tabular_bytes(file_bytes, filename)
-        self.uploaded_file_signature = file_signature
+    def get_df(self) -> pd.DataFrame:
+        if self.df is not None:
+            return self.df
+        if self.dataset_ref is None:
+            raise ValueError("DataFrame not set for this session")
+        if self.dataset_store is None:
+            raise DatasetStoreConfigError("Dataset storage is not configured.")
+
+        file_bytes = self.dataset_store.get_dataset_bytes(self.dataset_ref)
+        self.df = load_tabular_bytes(file_bytes, self.dataset_ref["filename"])
+        return self.df
+
+    def load_uploaded_file(
+        self, file_bytes: bytes, filename: str, session_id: str | None = None
+    ):
+        file_signature = get_uploaded_file_signature(file_bytes, filename)
+        file_changed = file_signature != self.file_signature
+
+        if not file_changed:
+            return {
+                "file_signature": file_signature,
+                "file_changed": False,
+            }
+
+        parsed_df = load_tabular_bytes(file_bytes, filename)
+
+        dataset_ref = None
+        if self.dataset_store is not None:
+            storage_session_id = session_id or self.thread_id
+            dataset_ref = self.dataset_store.put_dataset(
+                session_id=storage_session_id,
+                file_bytes=file_bytes,
+                filename=filename,
+                sha256=file_signature["sha256"],
+            )
+
+        self.df = parsed_df
+        self.file_signature = file_signature
+        self.dataset_ref = dataset_ref
+        self.uploaded_file_signature = {
+            **file_signature,
+            "storage_backend": "s3" if dataset_ref is not None else "memory",
+            "dataset": dataset_ref,
+        }
 
         if file_changed:
             self.clear_memory()
@@ -151,17 +192,24 @@ class AgentSession:
         }
 
     def clear_memory(self):
-        self.memory = MemorySaver()
+        if not self.uses_shared_checkpointer:
+            self.memory = MemorySaver()
         self.thread_id = build_thread_id()
         self.messages = []
         self.last_tool_results = []
         self.figures = []
         self._rebuild_graph()
 
-    def _register_new_figures(self, figure_payloads: list[dict]) -> list[dict]:
-        for figure_payload in figure_payloads:
-            self.figures.append(figure_payload)
+    def delete_uploaded_dataset(self) -> None:
+        if self.dataset_store is None or self.dataset_ref is None:
+            return
+        self.dataset_store.delete_dataset(self.dataset_ref)
 
+    def close(self) -> None:
+        pass
+
+    def _register_new_figures(self, figure_payloads: list[dict]) -> list[dict]:
+        self.figures.extend(figure_payloads)
         return figure_payloads
 
     def run(
@@ -171,8 +219,7 @@ class AgentSession:
         recursion_limit: int = 100,
         langfuse_handler=None,
     ):
-        if self.df is None:
-            raise ValueError("DataFrame not set for this session")
+        self.get_df()
         if self.graph is None:
             raise RuntimeError("LLM not initialized for this session")
 
@@ -192,8 +239,6 @@ class AgentSession:
         except Exception:
             # First run might not have state
             pass
-
-        self.messages.append({"role": "user", "content": query})
 
         hit_recursion_limit = False
         try:
@@ -219,6 +264,7 @@ class AgentSession:
 
         normalized_result = normalize_agent_result(result)
         normalized_result["hit_recursion_limit"] = hit_recursion_limit
+        self.messages.append({"role": "user", "content": query})
         self.last_tool_results = normalized_result.get("tool_results", [])
 
         new_figures = self._register_new_figures(normalized_result.get("figures", []))

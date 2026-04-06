@@ -3,7 +3,6 @@
 from typing import Callable
 
 import pandas as pd
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from .config import MessagesStateWithTools
@@ -14,9 +13,12 @@ class DataScienceGraph:
     """Graph wrapper with injected runtime dependencies."""
 
     def __init__(
-        self, llm_with_tools, df_getter: Callable[[], pd.DataFrame], memory=None
+        self,
+        llm_with_tools,
+        df_getter: Callable[[], pd.DataFrame],
+        memory=None,
     ):
-        self.memory = memory or MemorySaver()
+        self.memory = memory
         self.llm_with_tools = llm_with_tools
         self.df_getter = df_getter
         self.compiled_graph = self._build_graph()
@@ -24,7 +26,10 @@ class DataScienceGraph:
     def _build_graph(self):
         workflow = StateGraph(MessagesStateWithTools)
         workflow.add_node("agent", create_agent_node(self.llm_with_tools))
-        workflow.add_node("tools", create_tools_node(self.df_getter))
+        workflow.add_node(
+            "tools",
+            create_tools_node(self.df_getter),
+        )
         workflow.add_node("store_response", store_response)
 
         workflow.add_edge(START, "agent")
