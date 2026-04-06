@@ -2,6 +2,7 @@
 
 import ast
 import json
+import logging
 import os
 import pickle
 import shutil
@@ -16,11 +17,15 @@ from typing import Tuple
 import pandas as pd
 
 
+logger = logging.getLogger(__name__)
+
+
 SANDBOX_TIMEOUT_SECONDS = max(1, int(os.getenv("PYTHON_REPL_TIMEOUT_SECONDS", "20")))
 SANDBOX_MEMORY_LIMIT_MB = max(128, int(os.getenv("PYTHON_REPL_MEMORY_LIMIT_MB", "512")))
 SANDBOX_RUNNER_PATH = Path(__file__).with_name("sandbox_runner.py")
 NSJAIL_CONFIG_PATH = Path(__file__).with_name("nsjail.cfg")
-NSJAIL_AVAILABLE = shutil.which("nsjail") is not None
+NSJAIL_PATH = shutil.which("nsjail")
+NSJAIL_AVAILABLE = NSJAIL_PATH is not None
 
 
 def _normalize_message_content(content) -> str:
@@ -187,19 +192,29 @@ def _run_code_in_sandbox(code: str, df: pd.DataFrame) -> dict:
             sys.executable,
             "-I",
             str(SANDBOX_RUNNER_PATH),
-            "--code-file", str(code_file),
-            "--df-file", str(dataframe_file),
-            "--output-file", str(output_file),
-            "--timeout-seconds", str(SANDBOX_TIMEOUT_SECONDS),
-            "--memory-limit-mb", str(SANDBOX_MEMORY_LIMIT_MB),
+            "--code-file",
+            str(code_file),
+            "--df-file",
+            str(dataframe_file),
+            "--output-file",
+            str(output_file),
+            "--timeout-seconds",
+            str(SANDBOX_TIMEOUT_SECONDS),
+            "--memory-limit-mb",
+            str(SANDBOX_MEMORY_LIMIT_MB),
         ]
 
+        used_nsjail = False
         if NSJAIL_AVAILABLE and os.name != "nt":
+            used_nsjail = True
             command = [
-                "nsjail",
-                "--config", str(NSJAIL_CONFIG_PATH),
-                "--bindmount", f"{sandbox_dir}:/sandbox",
-                "--", *python_command,
+                str(NSJAIL_PATH),
+                "--config",
+                str(NSJAIL_CONFIG_PATH),
+                "--bindmount",
+                f"{sandbox_dir}:/sandbox",
+                "--",
+                *python_command,
             ]
         else:
             command = python_command
@@ -238,6 +253,47 @@ def _run_code_in_sandbox(code: str, df: pd.DataFrame) -> dict:
                 pass
 
         stderr = (completed.stderr or "").strip()
+
+        if used_nsjail and completed.returncode != 0:
+            logger.warning(
+                "nsjail failed to start sandboxed execution; falling back to subprocess-only sandbox. stderr=%s",
+                stderr or "<empty>",
+            )
+            try:
+                completed = subprocess.run(
+                    python_command,
+                    cwd=sandbox_dir,
+                    env=_build_sandbox_env(),
+                    capture_output=True,
+                    text=True,
+                    timeout=SANDBOX_TIMEOUT_SECONDS + 1,
+                    stdin=subprocess.DEVNULL,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "stdout": "",
+                    "result": None,
+                    "figures": [],
+                    "error": (
+                        "Python execution timed out after "
+                        f"{SANDBOX_TIMEOUT_SECONDS} seconds."
+                    ),
+                }
+
+            if output_file.exists():
+                try:
+                    payload = json.loads(output_file.read_text(encoding="utf-8"))
+                    return {
+                        "stdout": payload.get("stdout", "") or "",
+                        "result": payload.get("result", None),
+                        "figures": payload.get("figures", []) or [],
+                        "error": payload.get("error", None),
+                    }
+                except json.JSONDecodeError:
+                    pass
+
+            stderr = (completed.stderr or "").strip()
+
         if completed.returncode != 0 and stderr:
             error_message = stderr
         elif completed.returncode != 0:

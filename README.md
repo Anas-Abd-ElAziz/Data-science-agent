@@ -177,8 +177,8 @@ PYTHON_REPL_MEMORY_LIMIT_MB=512
 
 Behavior:
 
-- on Linux containers with `nsjail` available, code runs with kernel-level isolation on top of the subprocess sandbox
-- on platforms without `nsjail`, the app falls back to the constrained subprocess sandbox only
+- on Linux containers with `nsjail` available and working, code runs with kernel-level isolation on top of the subprocess sandbox
+- if `nsjail` is unavailable or fails to initialize, the app falls back to the constrained subprocess sandbox only
 
 ## Running Locally
 

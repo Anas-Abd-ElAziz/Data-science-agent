@@ -1,6 +1,8 @@
+import os
 import streamlit as st
 import time
 import plotly.io as pio
+from urllib.parse import urlparse
 from agent import AgentSession, SUPPORTED_UPLOAD_TYPES, get_figure_identifier
 import streamlit.components.v1 as components
 
@@ -22,8 +24,13 @@ if LANGFUSE_AVAILABLE:
     try:
         from langfuse import get_client
 
-        _langfuse_client = get_client()
-        _langfuse_handler = CallbackHandler()
+        base_url = (os.getenv("LANGFUSE_BASE_URL") or "").strip()
+        parsed_base_url = urlparse(base_url) if base_url else None
+        if not base_url or (
+            parsed_base_url.scheme in {"http", "https"} and parsed_base_url.netloc
+        ):
+            _langfuse_client = get_client()
+            _langfuse_handler = CallbackHandler()
     except Exception:
         pass
 

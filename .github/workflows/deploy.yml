@@ -45,18 +45,24 @@ jobs:
 
     - name: Inject environment variables into task definition
       run: |
-        jq '.containerDefinitions[0].environment = [
-          {"name": "REDIS_URL",                   "value": "${{ secrets.REDIS_URL }}"},
-          {"name": "S3_DATASET_BUCKET",           "value": "${{ secrets.S3_DATASET_BUCKET }}"},
-          {"name": "S3_DATASET_PREFIX",           "value": "datasets"},
-          {"name": "S3_DELETE_ON_SESSION_DELETE",  "value": "false"},
-          {"name": "AWS_REGION",                  "value": "eu-north-1"},
-          {"name": "LANGFUSE_PUBLIC_KEY",         "value": "${{ secrets.LANGFUSE_PUBLIC_KEY }}"},
-          {"name": "LANGFUSE_SECRET_KEY",         "value": "${{ secrets.LANGFUSE_SECRET_KEY }}"},
-          {"name": "LANGFUSE_BASE_URL",           "value": "${{ secrets.LANGFUSE_BASE_URL }}"},
-          {"name": "PYTHON_REPL_TIMEOUT_SECONDS", "value": "20"},
-          {"name": "PYTHON_REPL_MEMORY_LIMIT_MB", "value": "512"}
-        ] | del(.containerDefinitions[0].secrets)' .aws/task-definition.json > .aws/task-definition-final.json
+        jq \
+          --arg redis_url "${{ secrets.REDIS_URL }}" \
+          --arg s3_dataset_bucket "${{ secrets.S3_DATASET_BUCKET }}" \
+          --arg langfuse_public_key "${{ secrets.LANGFUSE_PUBLIC_KEY }}" \
+          --arg langfuse_secret_key "${{ secrets.LANGFUSE_SECRET_KEY }}" \
+          --arg langfuse_base_url "${{ secrets.LANGFUSE_BASE_URL }}" \
+          '.containerDefinitions[0].environment = [
+            {"name": "REDIS_URL",                    "value": $redis_url},
+            {"name": "S3_DATASET_BUCKET",            "value": $s3_dataset_bucket},
+            {"name": "S3_DATASET_PREFIX",            "value": "datasets"},
+            {"name": "S3_DELETE_ON_SESSION_DELETE",  "value": "false"},
+            {"name": "AWS_REGION",                   "value": "eu-north-1"},
+            {"name": "LANGFUSE_PUBLIC_KEY",          "value": $langfuse_public_key},
+            {"name": "LANGFUSE_SECRET_KEY",          "value": $langfuse_secret_key},
+            {"name": "LANGFUSE_BASE_URL",            "value": $langfuse_base_url},
+            {"name": "PYTHON_REPL_TIMEOUT_SECONDS",  "value": "20"},
+            {"name": "PYTHON_REPL_MEMORY_LIMIT_MB",  "value": "512"}
+          ] | del(.containerDefinitions[0].secrets)' .aws/task-definition.json > .aws/task-definition-final.json
         mv .aws/task-definition-final.json .aws/task-definition.json
 
     - name: Fill in new image ID in task definition

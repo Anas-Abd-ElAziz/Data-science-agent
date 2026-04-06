@@ -300,19 +300,22 @@ def _compile_user_code(code: str):
     return compile(tree, "<python_repl>", "exec")
 
 
-def _execute_user_code(code: str, df):
+def _execute_user_code(code: str, df, timeout_seconds: int, memory_limit_mb: int):
     import numpy as np
     import pandas as pd
     import plotly.express as px
     import plotly.graph_objects as go
     import plotly.io as pio
 
+    _apply_resource_limits(timeout_seconds, memory_limit_mb)
+
     compiled_code = _compile_user_code(code)
     stdout_buffer = StringIO()
     env_vars = {
         "__builtins__": _build_safe_builtins(),
         "__name__": "__main__",
-        "df": df.copy(),
+        # The dataframe is already isolated in this subprocess.
+        "df": df,
         "np": np,
         "pd": pd,
         "px": px,
@@ -354,13 +357,17 @@ def main() -> int:
 
     try:
         _disable_network()
-        _apply_resource_limits(args.timeout_seconds, args.memory_limit_mb)
 
         code = Path(args.code_file).read_text(encoding="utf-8")
         with Path(args.df_file).open("rb") as handle:
             df = pickle.load(handle)
 
-        payload = _execute_user_code(code, df)
+        payload = _execute_user_code(
+            code,
+            df,
+            timeout_seconds=args.timeout_seconds,
+            memory_limit_mb=args.memory_limit_mb,
+        )
     except Exception:
         payload = {
             "stdout": "",

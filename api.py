@@ -12,6 +12,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -206,6 +207,14 @@ def _init_langfuse():
     global _langfuse_handler
     if not LANGFUSE_AVAILABLE:
         return
+    base_url = (os.getenv("LANGFUSE_BASE_URL") or "").strip()
+    if base_url:
+        parsed = urlparse(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            logger.warning(
+                "Skipping Langfuse initialization because LANGFUSE_BASE_URL is malformed."
+            )
+            return
     try:
         _langfuse_handler = LangfuseCallbackHandler()
     except Exception:
